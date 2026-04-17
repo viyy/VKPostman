@@ -1,0 +1,65 @@
+name: Deploy VkPostmanWeb to GitHub Pages
+
+# Triggers on pushes to main that touch the web app, or manually via the Actions tab.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'VkPostmanWeb/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+# GITHUB_TOKEN permissions required by actions/deploy-pages@v4.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deploy runs at a time; newer pushes cancel older in-flight runs.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: VkPostmanWeb
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: VkPostmanWeb/package-lock.json
+
+      - name: Install deps (clean, from lockfile)
+        run: npm ci
+
+      # Vite needs to know the sub-path at which the site will be served.
+      # For https://<user>.github.io/<repo>/ Pages serves at /<repo>/ — we
+      # inject that via VITE_BASE, consumed by vite.config.ts.
+      - name: Build
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: VkPostmanWeb/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

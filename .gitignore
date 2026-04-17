@@ -1,0 +1,26 @@
+# -- .NET ---------------------------------------------------------------------
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+publish/
+*.csproj.user
+
+# -- Node / Vite --------------------------------------------------------------
+**/node_modules/
+**/dist/
+**/dev-dist/
+.svelte-kit/
+.vite/
+
+# -- OS / editor --------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.log
+
+# -- Local SQLite that we don't version ---------------------------------------
+*.db
+*.db-shm
+*.db-wal
