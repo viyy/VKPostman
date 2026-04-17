@@ -32,6 +32,29 @@
                                FontWeight="SemiBold" />
                 </Border>
 
+                <!-- Data import/export anchored at the bottom of the sidebar. -->
+                <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,12">
+                    <Separator Margin="0,8" />
+                    <TextBlock Text="Data" Foreground="{StaticResource VkTextSecondaryBrush}"
+                               FontSize="11" Margin="8,0,0,4" />
+                    <Button Content="⬇   Export JSON"
+                            HorizontalContentAlignment="Left"
+                            Padding="12,8"
+                            Margin="0,1"
+                            BorderThickness="0"
+                            Background="Transparent"
+                            Cursor="Hand"
+                            Command="{Binding ExportDataCommand}" />
+                    <Button Content="⬆   Import JSON"
+                            HorizontalContentAlignment="Left"
+                            Padding="12,8"
+                            Margin="0,1"
+                            BorderThickness="0"
+                            Background="Transparent"
+                            Cursor="Hand"
+                            Command="{Binding ImportDataCommand}" />
+                </StackPanel>
+
                 <StackPanel Margin="8,10,8,0">
                     <RadioButton Content="📝   Drafts"
                                  IsChecked="{Binding IsDraftsSelected, Mode=TwoWay}"
@@ -46,9 +69,29 @@
             </DockPanel>
         </Border>
 
-        <!-- Content area -->
-        <ContentControl Grid.Column="1"
-                        Content="{Binding CurrentView}"
-                        Margin="24,20" />
+        <!-- Content column -->
+        <DockPanel Grid.Column="1">
+            <!-- Import/export banner -->
+            <Border DockPanel.Dock="Top"
+                    Visibility="{Binding IoMessage, Converter={x:Static vm:NotNullConverter.Instance}}"
+                    Padding="16,10">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IoMessageIsError}" Value="True">
+                                <Setter Property="Background" Value="#FCE4E4" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IoMessageIsError}" Value="False">
+                                <Setter Property="Background" Value="#E6F4E6" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <TextBlock Text="{Binding IoMessage}" FontSize="13" />
+            </Border>
+
+            <ContentControl Content="{Binding CurrentView}"
+                            Margin="24,20" />
+        </DockPanel>
     </Grid>
 </Window>

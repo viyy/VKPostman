@@ -64,10 +64,13 @@
                     <DockPanel>
                         <TextBlock Text="Group" Style="{StaticResource SectionHeader}" DockPanel.Dock="Left" />
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Content="💾 Save" Style="{StaticResource PrimaryButton}"
-                                    Margin="0,0,6,0" Command="{Binding SaveGroupCommand}" />
-                            <Button Content="Cancel" Style="{StaticResource OutlineButton}"
-                                    Command="{Binding CancelEditCommand}" />
+                            <TextBlock Text="{Binding Autosave.Status, Converter={x:Static vm:AutosaveStatusLabelConverter.Instance}}"
+                                       Foreground="{StaticResource VkTextSecondaryBrush}"
+                                       Margin="0,0,10,0"
+                                       VerticalAlignment="Center"
+                                       FontSize="12" />
+                            <Button Content="Close" Style="{StaticResource OutlineButton}"
+                                    Command="{Binding CloseEditorCommand}" />
                         </StackPanel>
                     </DockPanel>
 
@@ -76,9 +79,6 @@
 
                     <TextBlock Text="Screen name (@shortname or vk.com/shortname)" Margin="0,12,0,4" />
                     <TextBox Text="{Binding SelectedGroup.ScreenName, UpdateSourceTrigger=PropertyChanged}" />
-
-                    <TextBlock Text="VK community ID (negative — e.g. -12345). Optional." Margin="0,12,0,4" />
-                    <TextBox Text="{Binding SelectedGroup.VkGroupId, UpdateSourceTrigger=PropertyChanged}" />
 
                     <TextBlock Text="Template" Margin="0,12,0,4" />
                     <ComboBox ItemsSource="{Binding Templates}"

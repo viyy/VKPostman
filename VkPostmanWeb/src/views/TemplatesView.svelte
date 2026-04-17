@@ -2,6 +2,7 @@
   import { liveQuery } from 'dexie';
   import { db, createTemplate, saveTemplate, deleteTemplate } from '../lib/db';
   import { PlaceholderType, type PlaceholderDefinition, type PostTemplate } from '../lib/types';
+  import { createAutosave, type AutosaveStatus } from '../lib/autosave';
 
   const templatesQuery = liveQuery(() => db.templates.orderBy('updatedAt').reverse().toArray());
 
@@ -13,6 +14,7 @@
 
   let editing = $state<PostTemplate | null>(null);
   let defaultTagsInput = $state('');
+  let saveStatus = $state<AutosaveStatus>('idle');
 
   const typeOptions: Array<{ v: PlaceholderType; label: string }> = [
     { v: PlaceholderType.Text, label: 'Text' },
@@ -22,8 +24,29 @@
     { v: PlaceholderType.TagList, label: 'Tag list' },
   ];
 
+  // Keep the editing payload in sync with the tag input as the user types,
+  // so autosave sees the derived list change.
+  $effect(() => {
+    if (!editing) return;
+    editing.defaultThemeTags = defaultTagsInput
+      .split(/\s+/)
+      .map((t) => t.replace(/^#+/, '').trim())
+      .filter(Boolean);
+  });
+
+  const autosave = createAutosave<PostTemplate>({
+    get: () => editing,
+    save: async (snap) => {
+      await saveTemplate(snap);
+    },
+    delayMs: 500,
+    onStatus: (s) => (saveStatus = s),
+  });
+  $effect(autosave.watch);
+
   function edit(t: PostTemplate) {
-    // Deep clone — we don't want to mutate the live-query row while editing.
+    // Flush any pending save from the previous item before switching.
+    void autosave.flush();
     editing = {
       ...t,
       defaultThemeTags: [...t.defaultThemeTags],
@@ -32,11 +55,13 @@
     defaultTagsInput = t.defaultThemeTags.join(' ');
   }
 
-  function cancel() {
+  async function close() {
+    await autosave.flush();
     editing = null;
   }
 
   async function addNew() {
+    await autosave.flush();
     const id = await createTemplate();
     const t = await db.templates.get(id);
     if (t) edit(t);
@@ -58,22 +83,22 @@
     editing.placeholderSchema = editing.placeholderSchema.filter((x) => x !== p);
   }
 
-  async function save() {
-    if (!editing) return;
-    editing.defaultThemeTags = defaultTagsInput
-      .split(/\s+/)
-      .map((t) => t.replace(/^#+/, '').trim())
-      .filter(Boolean);
-    await saveTemplate($state.snapshot(editing) as typeof editing);
-    editing = null;
-  }
-
   async function remove(t: PostTemplate) {
     if (!t.id) return;
     if (!confirm(`Delete template "${t.name}"?`)) return;
     await deleteTemplate(t.id);
     if (editing?.id === t.id) editing = null;
   }
+
+  const statusLabel = $derived.by(() => {
+    switch (saveStatus) {
+      case 'dirty':  return '…';
+      case 'saving': return 'Saving…';
+      case 'saved':  return '✓ Saved';
+      case 'error':  return '⚠ Save failed';
+      default:       return '';
+    }
+  });
 </script>
 
 <div class="editor-layout">
@@ -113,8 +138,8 @@
       <div class="card-header">
         <h3 style="margin: 0;">Edit template</h3>
         <div class="row">
-          <button class="btn btn-primary btn-sm" onclick={save}>💾 Save</button>
-          <button class="btn btn-ghost btn-sm" onclick={cancel}>Cancel</button>
+          <span class="muted" style="min-width: 5rem; text-align: right;">{statusLabel}</span>
+          <button class="btn btn-ghost btn-sm" onclick={close}>Close</button>
         </div>
       </div>
 
@@ -154,31 +179,31 @@
         {:else}
           <div class="stack-lg">
             {#each editing.placeholderSchema as p, idx (idx)}
-              <div
-                style="border: 1px solid var(--vk-border); border-radius: 6px; padding: 0.6rem;"
-              >
-                <div class="row" style="align-items: flex-end;">
-                  <label class="stack grow">
-                    <span>Key</span>
-                    <input type="text" bind:value={p.key} />
-                  </label>
-                  <label class="stack grow">
-                    <span>Display name</span>
-                    <input type="text" bind:value={p.displayName} />
-                  </label>
-                  <label class="stack">
-                    <span>Type</span>
-                    <select bind:value={p.type}>
-                      {#each typeOptions as opt (opt.v)}
-                        <option value={opt.v}>{opt.label}</option>
-                      {/each}
-                    </select>
-                  </label>
-                  <label class="row" style="gap: 0.3rem; align-self: center;">
-                    <input type="checkbox" bind:checked={p.isRequired} /> Required
-                  </label>
-                  <button class="btn btn-danger btn-sm" onclick={() => removePlaceholder(p)}>🗑</button>
-                </div>
+              <div class="placeholder-row">
+                <label class="stack cell-key">
+                  <span>Key</span>
+                  <input type="text" bind:value={p.key} />
+                </label>
+                <label class="stack cell-display">
+                  <span>Display name</span>
+                  <input type="text" bind:value={p.displayName} />
+                </label>
+                <label class="stack cell-type">
+                  <span>Type</span>
+                  <select bind:value={p.type}>
+                    {#each typeOptions as opt (opt.v)}
+                      <option value={opt.v}>{opt.label}</option>
+                    {/each}
+                  </select>
+                </label>
+                <label class="cell-required">
+                  <input type="checkbox" bind:checked={p.isRequired} /> Required
+                </label>
+                <button
+                  class="btn btn-danger btn-sm cell-remove"
+                  onclick={() => removePlaceholder(p)}
+                  aria-label="Remove placeholder"
+                >🗑</button>
               </div>
             {/each}
           </div>

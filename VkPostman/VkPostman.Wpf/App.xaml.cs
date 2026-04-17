@@ -53,6 +53,7 @@ public partial class App : Application
                 services.AddScoped<DraftService>();
                 services.AddScoped<GroupService>();
                 services.AddScoped<TemplateService>();
+                services.AddScoped<ExchangeService>();
 
                 services.AddTransient<MainViewModel>();
                 services.AddTransient<DraftsViewModel>();

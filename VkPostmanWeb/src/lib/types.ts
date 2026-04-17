@@ -45,7 +45,6 @@ export interface TargetGroup {
   postTemplateId?: number;   // nullable — groups can exist without a template
   isActive: boolean;
   notes: string;
-  vkGroupId?: number;
   createdAt: Date;
 }
 
