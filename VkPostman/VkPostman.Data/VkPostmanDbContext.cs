@@ -41,13 +41,12 @@ public class VkPostmanDbContext : DbContext
         modelBuilder.Entity<TargetGroup>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.VkGroupId).IsRequired();
             entity.Property(e => e.ScreenName).IsRequired().HasMaxLength(100);
             entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Description).HasMaxLength(500);
             entity.Property(e => e.Notes).HasMaxLength(1000);
 
-            entity.HasIndex(e => e.VkGroupId).IsUnique();
+            entity.HasIndex(e => e.ScreenName).IsUnique();
             entity.Ignore(e => e.PublicUrl);
 
             entity.Property(e => e.MandatoryTags)

@@ -381,6 +381,45 @@ label {
 /* ===== Visibility ===== */
 .hidden { display: none !important; }
 
+/* ===== Placeholder editor rows (used on the Templates tab) ===== */
+.placeholder-row {
+  display: grid;
+  gap: 0.5rem 0.6rem;
+  padding: 0.6rem;
+  border: 1px solid var(--vk-border);
+  border-radius: var(--radius-sm);
+  align-items: end;
+  /* Desktop default: key | display | type | required | 🗑 */
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) minmax(140px, 180px) auto auto;
+}
+
+.placeholder-row .cell-key      { grid-column: 1; }
+.placeholder-row .cell-display  { grid-column: 2; }
+.placeholder-row .cell-type     { grid-column: 3; }
+.placeholder-row .cell-required {
+  grid-column: 4;
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  padding-bottom: 0.35rem;
+}
+.placeholder-row .cell-remove   { grid-column: 5; }
+
+/* Narrow screens: stack everything vertically so inputs are readable and
+   the type dropdown doesn't get squeezed to icon width. */
+@media (max-width: 640px) {
+  .placeholder-row {
+    grid-template-columns: 1fr auto;
+  }
+  .placeholder-row .cell-key,
+  .placeholder-row .cell-display,
+  .placeholder-row .cell-type {
+    grid-column: 1 / -1;
+  }
+  .placeholder-row .cell-required { grid-column: 1; }
+  .placeholder-row .cell-remove   { grid-column: 2; justify-self: end; }
+}
+
 /* ===== Mobile helpers ===== */
 @media (max-width: 560px) {
   .content { padding: 0.6rem; }

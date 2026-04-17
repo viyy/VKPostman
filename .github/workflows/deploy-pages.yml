@@ -9,11 +9,13 @@ on:
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
-# GITHUB_TOKEN permissions required by actions/deploy-pages@v4.
+# GITHUB_TOKEN permissions required by actions/deploy-pages@v4 plus
+# actions: write so the cleanup step can delete stale artifacts.
 permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write
 
 # Only one Pages deploy runs at a time; newer pushes cancel older in-flight runs.
 concurrency:
@@ -36,6 +38,20 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: VkPostmanWeb/package-lock.json
+
+      # "Re-run all jobs" on a failed run would otherwise upload a SECOND
+      # github-pages artifact into the same run, and deploy-pages@v4 refuses
+      # to pick one. Delete any prior copy before we upload a fresh one.
+      - name: Delete any prior github-pages artifact in this run
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" \
+            --jq '.artifacts[] | select(.name == "github-pages") | .id' \
+          | xargs -r -I {} gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/{}"
 
       - name: Install deps (clean, from lockfile)
         run: npm ci

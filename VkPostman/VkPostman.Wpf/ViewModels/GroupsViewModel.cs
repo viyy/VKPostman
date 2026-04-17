@@ -19,13 +19,21 @@ public partial class GroupsViewModel : ObservableObject
     [ObservableProperty] private TargetGroup? selectedGroup;
     [ObservableProperty] private bool isEditing;
 
-    // Edit-form fields — bound directly to SelectedGroup where possible, but tags need a string buffer.
+    /// <summary>The MandatoryTags edit buffer — split into the list on every autosave tick.</summary>
     [ObservableProperty] private string editMandatoryTagsInput = "";
+
+    public Autosave<TargetGroup> Autosave { get; }
 
     public GroupsViewModel(GroupService groups, VkPostmanDbContext db)
     {
         _groups = groups;
         _db = db;
+
+        Autosave = new Autosave<TargetGroup>(
+            get:  () => SelectedGroup is { Id: > 0 } g ? g : null,
+            save: SaveCurrentAsync);
+        Autosave.Start();
+
         _ = LoadAsync();
     }
 
@@ -40,55 +48,56 @@ public partial class GroupsViewModel : ObservableObject
             Templates.Add(t);
     }
 
-    [RelayCommand]
-    private void NewGroup()
+    /// <summary>Called by the Autosave service — syncs the tag input into the entity and persists.</summary>
+    private async Task SaveCurrentAsync(TargetGroup g)
     {
-        SelectedGroup = new TargetGroup
+        g.MandatoryTags = ParseTags(EditMandatoryTagsInput);
+        await _groups.UpdateAsync(g);
+    }
+
+    private static List<string> ParseTags(string input) =>
+        input.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+             .Select(t => t.TrimStart('#'))
+             .Where(t => !string.IsNullOrWhiteSpace(t))
+             .ToList();
+
+    [RelayCommand]
+    private async Task NewGroupAsync()
+    {
+        await Autosave.FlushAsync();
+
+        // Simpler path than the PWA flow: create an in-memory draft and let
+        // the first autosave tick persist it once the user types anything.
+        // On add we write immediately so the list shows the new row now.
+        var g = new TargetGroup
         {
             DisplayName = "New group",
             ScreenName = "",
             IsActive = true,
         };
+        Groups.Add(g);
+        await _groups.AddAsync(g);
+        SelectedGroup = g;
         EditMandatoryTagsInput = "";
         IsEditing = true;
+        await Autosave.ResetAsync();
     }
 
     [RelayCommand]
-    private void EditGroup(TargetGroup? group)
+    private async Task EditGroupAsync(TargetGroup? group)
     {
         if (group is null) return;
+        await Autosave.FlushAsync();
         SelectedGroup = group;
         EditMandatoryTagsInput = string.Join(" ", group.MandatoryTags);
         IsEditing = true;
+        await Autosave.ResetAsync();
     }
 
     [RelayCommand]
-    private async Task SaveGroupAsync()
+    private async Task CloseEditorAsync()
     {
-        if (SelectedGroup is null) return;
-
-        SelectedGroup.MandatoryTags = EditMandatoryTagsInput
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Select(t => t.TrimStart('#'))
-            .Where(t => !string.IsNullOrWhiteSpace(t))
-            .ToList();
-
-        if (SelectedGroup.Id == 0)
-        {
-            await _groups.AddAsync(SelectedGroup);
-        }
-        else
-        {
-            await _groups.UpdateAsync(SelectedGroup);
-        }
-
-        IsEditing = false;
-        await LoadAsync();
-    }
-
-    [RelayCommand]
-    private void CancelEdit()
-    {
+        await Autosave.FlushAsync();
         IsEditing = false;
         SelectedGroup = null;
     }
@@ -97,7 +106,30 @@ public partial class GroupsViewModel : ObservableObject
     private async Task DeleteGroupAsync(TargetGroup? group)
     {
         if (group is null) return;
-        await _groups.DeleteAsync(group.Id);
-        await LoadAsync();
+        Autosave.Stop();
+        try
+        {
+            await _groups.DeleteAsync(group.Id);
+            Groups.Remove(group);
+            if (SelectedGroup?.Id == group.Id)
+            {
+                SelectedGroup = null;
+                IsEditing = false;
+            }
+        }
+        finally
+        {
+            Autosave.Start();
+        }
+    }
+
+    // Reset autosave baseline whenever a different group is picked directly
+    // (rather than through the EditGroupCommand — e.g. keyboard navigation).
+    partial void OnSelectedGroupChanged(TargetGroup? value)
+    {
+        if (value is null) return;
+        EditMandatoryTagsInput = string.Join(" ", value.MandatoryTags);
+        IsEditing = true;
+        _ = Autosave.ResetAsync();
     }
 }

@@ -11,10 +11,6 @@ public class TargetGroup
 {
     public int Id { get; set; }
 
-    /// <summary>VK community ID (negative, e.g. -123456).</summary>
-    [Required]
-    public long VkGroupId { get; set; }
-
     /// <summary>Short name such as <c>nelfias_community</c> (no leading <c>@</c>).</summary>
     [Required, StringLength(100)]
     public string ScreenName { get; set; } = string.Empty;

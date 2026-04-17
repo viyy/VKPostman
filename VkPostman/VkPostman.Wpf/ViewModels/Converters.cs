@@ -47,3 +47,19 @@ public sealed class InverseBoolToVisibilityConverter : IValueConverter
         (value is true) ? Visibility.Collapsed : Visibility.Visible;
     public object ConvertBack(object? v, Type t, object? p, CultureInfo c) => throw new NotSupportedException();
 }
+
+/// <summary>AutosaveStatus → human label shown next to the Close button.</summary>
+public sealed class AutosaveStatusLabelConverter : IValueConverter
+{
+    public static readonly AutosaveStatusLabelConverter Instance = new();
+    public object Convert(object? value, Type t, object? p, CultureInfo c) =>
+        value is Services.AutosaveStatus s ? s switch
+        {
+            Services.AutosaveStatus.Dirty  => "…",
+            Services.AutosaveStatus.Saving => "Saving…",
+            Services.AutosaveStatus.Saved  => "✓ Saved",
+            Services.AutosaveStatus.Error  => "⚠ Save failed",
+            _                              => "",
+        } : "";
+    public object ConvertBack(object? v, Type t, object? p, CultureInfo c) => throw new NotSupportedException();
+}

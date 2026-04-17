@@ -2,6 +2,7 @@
   import { liveQuery } from 'dexie';
   import { db, createGroup, saveGroup, deleteGroup } from '../lib/db';
   import type { TargetGroup } from '../lib/types';
+  import { createAutosave, type AutosaveStatus } from '../lib/autosave';
 
   // Live IndexedDB queries — re-run automatically when the data changes.
   const groupsQuery = liveQuery(() => db.groups.orderBy('displayName').toArray());
@@ -21,35 +22,43 @@
 
   let editing = $state<TargetGroup | null>(null);
   let tagsInput = $state('');
+  let saveStatus = $state<AutosaveStatus>('idle');
 
-  function edit(g: TargetGroup) {
-    editing = { ...g };
-    tagsInput = (g.mandatoryTags ?? []).join(' ');
-  }
-
-  function cancel() {
-    editing = null;
-  }
-
-  async function addNew() {
-    // Same UX as Templates: create a blank row, open it in the side editor. The
-    // user fills Display name / Screen name / template inline instead of through
-    // a browser prompt() dialog, which looks jarring and can't be styled.
-    const id = await createGroup('');
-    const g = await db.groups.get(id);
-    if (g) edit(g);
-  }
-
-  async function save() {
+  // Keep editing.mandatoryTags in sync with the input as the user types.
+  $effect(() => {
     if (!editing) return;
     editing.mandatoryTags = tagsInput
       .split(/\s+/)
       .map((t) => t.replace(/^#+/, '').trim())
       .filter(Boolean);
-    // $state.snapshot unwraps Svelte's proxy so Dexie's structuredClone-based
-    // put() sees a plain object — safer than trusting the proxy to round-trip.
-    await saveGroup($state.snapshot(editing) as typeof editing);
+  });
+
+  const autosave = createAutosave<TargetGroup>({
+    get: () => editing,
+    save: async (snap) => {
+      await saveGroup(snap);
+    },
+    delayMs: 500,
+    onStatus: (s) => (saveStatus = s),
+  });
+  $effect(autosave.watch);
+
+  function edit(g: TargetGroup) {
+    void autosave.flush();
+    editing = { ...g };
+    tagsInput = (g.mandatoryTags ?? []).join(' ');
+  }
+
+  async function close() {
+    await autosave.flush();
     editing = null;
+  }
+
+  async function addNew() {
+    await autosave.flush();
+    const id = await createGroup('');
+    const g = await db.groups.get(id);
+    if (g) edit(g);
   }
 
   async function removeGroup(g: TargetGroup) {
@@ -63,6 +72,16 @@
     if (id == null) return '(none)';
     return templates.find((t) => t.id === id)?.name ?? '(deleted)';
   }
+
+  const statusLabel = $derived.by(() => {
+    switch (saveStatus) {
+      case 'dirty':  return '…';
+      case 'saving': return 'Saving…';
+      case 'saved':  return '✓ Saved';
+      case 'error':  return '⚠ Save failed';
+      default:       return '';
+    }
+  });
 </script>
 
 <div class="editor-layout">
@@ -103,8 +122,8 @@
       <div class="card-header">
         <h3 style="margin: 0;">Edit group</h3>
         <div class="row">
-          <button class="btn btn-primary btn-sm" onclick={save}>💾 Save</button>
-          <button class="btn btn-ghost btn-sm" onclick={cancel}>Cancel</button>
+          <span class="muted" style="min-width: 5rem; text-align: right;">{statusLabel}</span>
+          <button class="btn btn-ghost btn-sm" onclick={close}>Close</button>
         </div>
       </div>
 
