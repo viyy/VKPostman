@@ -1,37 +1,38 @@
 <script lang="ts">
   import { liveQuery } from 'dexie';
-  import { db, createTemplate, saveTemplate, deleteTemplate } from '../lib/db';
-  import { PlaceholderType, type PlaceholderDefinition, type PostTemplate } from '../lib/types';
+  import { db, createTemplate, saveTemplate, deleteTemplate, ensurePlaceholder } from '../lib/db';
+  import {
+    type PlaceholderDefinition,
+    type PostTemplate,
+  } from '../lib/types';
   import { createAutosave, type AutosaveStatus } from '../lib/autosave';
   import {
     BUILT_IN_PLACEHOLDERS,
-    extractPlaceholderKeys,
+    extractLibraryPlaceholderKeys,
     isBuiltInPlaceholder,
   } from '../lib/render';
   import { tick } from 'svelte';
 
   const templatesQuery = liveQuery(() => db.templates.orderBy('updatedAt').reverse().toArray());
+  const libraryQuery   = liveQuery(() => db.placeholders.orderBy('key').toArray());
 
   let templates = $state<PostTemplate[] | undefined>(undefined);
+  let library = $state<PlaceholderDefinition[]>([]);
+
   $effect(() => {
-    const sub = templatesQuery.subscribe({ next: (v) => (templates = v) });
-    return () => sub.unsubscribe();
+    const s = templatesQuery.subscribe({ next: (v) => (templates = v) });
+    return () => s.unsubscribe();
+  });
+  $effect(() => {
+    const s = libraryQuery.subscribe({ next: (v) => (library = v) });
+    return () => s.unsubscribe();
   });
 
   let editing = $state<PostTemplate | null>(null);
   let defaultTagsInput = $state('');
   let saveStatus = $state<AutosaveStatus>('idle');
 
-  const typeOptions: Array<{ v: PlaceholderType; label: string }> = [
-    { v: PlaceholderType.Text, label: 'Text' },
-    { v: PlaceholderType.VkLink, label: 'VK link (@name)' },
-    { v: PlaceholderType.WikiLink, label: 'Wiki link [target|display]' },
-    { v: PlaceholderType.Url, label: 'URL' },
-    { v: PlaceholderType.TagList, label: 'Tag list' },
-  ];
-
-  // Keep the editing payload in sync with the tag input as the user types,
-  // so autosave sees the derived list change.
+  // Keep the tag-input in sync with the editing payload so autosave fires.
   $effect(() => {
     if (!editing) return;
     editing.defaultThemeTags = defaultTagsInput
@@ -40,90 +41,99 @@
       .filter(Boolean);
   });
 
-  // ---------- Placeholder toolbar / autocomplete / auto-sync ----------------
+  const autosave = createAutosave<PostTemplate>({
+    get: () => editing,
+    save: async (snap) => { await saveTemplate(snap); },
+    delayMs: 500,
+    onStatus: (s) => (saveStatus = s),
+  });
+  $effect(autosave.watch);
 
-  /** DOM handle for the Body textarea — lets us insert at the cursor. */
+  function edit(t: PostTemplate) {
+    void autosave.flush();
+    editing = {
+      ...t,
+      defaultThemeTags: [...t.defaultThemeTags],
+    };
+    defaultTagsInput = t.defaultThemeTags.join(' ');
+  }
+
+  async function close() {
+    await autosave.flush();
+    editing = null;
+  }
+
+  async function addNew() {
+    await autosave.flush();
+    const id = await createTemplate();
+    const t = await db.templates.get(id);
+    if (t) edit(t);
+  }
+
+  async function remove(t: PostTemplate) {
+    if (!t.id) return;
+    if (!confirm(`Delete template "${t.name}"?`)) return;
+    await deleteTemplate(t.id);
+    if (editing?.id === t.id) editing = null;
+  }
+
+  // ---- Body editor state (chip toolbar + autocomplete + auto-sync) ---------
+
   let bodyTextarea: HTMLTextAreaElement | undefined = $state();
-
-  /** Caret position in the Body textarea, tracked so autocomplete can see it. */
   let caretPos = $state(0);
 
-  /**
-   * If the caret is inside an OPEN `{{ … ` (no closing `}}` between the last
-   * `{{` and the caret), return the partial key typed so far. Otherwise null.
-   * Drives "filter mode" for the chip toolbar.
-   */
   const autocompleteQuery = $derived.by<string | null>(() => {
     if (!editing) return null;
     const body = editing.bodyTemplate ?? '';
     const left = body.slice(0, caretPos);
     const openIdx = left.lastIndexOf('{{');
     if (openIdx < 0) return null;
-    const betweenOpenAndCaret = left.slice(openIdx + 2);
-    // If the user has already closed the expression, we're not inside it.
-    if (betweenOpenAndCaret.includes('}}')) return null;
-    // Whatever comes after the `{{`, trimmed of leading whitespace, is the query.
-    return betweenOpenAndCaret.replace(/^\s*/, '');
+    const between = left.slice(openIdx + 2);
+    if (between.includes('}}')) return null;
+    return between.replace(/^\s*/, '');
   });
 
-  /** Chips to show in the toolbar — user-defined first, then globals, filtered by query. */
   const suggestedKeys = $derived.by<string[]>(() => {
-    if (!editing) return [];
-    const schemaKeys = editing.placeholderSchema.map((p) => p.key).filter(Boolean);
-    const all = [...schemaKeys, ...BUILT_IN_PLACEHOLDERS];
+    const libKeys = library.map((d) => d.key);
+    const all = [...libKeys, ...BUILT_IN_PLACEHOLDERS];
     const q = autocompleteQuery;
     if (q == null) return all;
     const lower = q.toLowerCase();
     return all.filter((k) => k.toLowerCase().startsWith(lower));
   });
 
-  /**
-   * Auto-add placeholder rows for any key referenced in the body that isn't in
-   * the schema and isn't a global. Debounced via rAF so we don't churn the
-   * schema on every keystroke. Removals are NOT mirrored — deleting a row is
-   * an explicit user action, not something we'd want to happen from a typo.
-   */
-  let _autoSyncFrame = 0;
-  $effect(() => {
-    if (!editing) return;
-    cancelAnimationFrame(_autoSyncFrame);
-    // Touch the body so the effect re-runs when it changes:
-    const body = editing.bodyTemplate ?? '';
-    _autoSyncFrame = requestAnimationFrame(() => {
-      if (!editing) return;
-      const referenced = extractPlaceholderKeys(body);
-      const existing = new Set(editing.placeholderSchema.map((p) => p.key));
-      let added = false;
-      for (const key of referenced) {
-        if (isBuiltInPlaceholder(key)) continue;
-        if (!existing.has(key)) {
-          editing.placeholderSchema.push({
-            key,
-            displayName: toDisplayName(key),
-            isRequired: false,
-            type: PlaceholderType.Text,
-          });
-          existing.add(key);
-          added = true;
-        }
-      }
-      if (added) {
-        // Reassign to trigger Svelte reactivity.
-        editing.placeholderSchema = editing.placeholderSchema;
-      }
+  /** The read-only "placeholders used" list below the Body. */
+  const usedPlaceholders = $derived.by(() => {
+    if (!editing) return [] as Array<{ key: string; displayName: string; type: string }>;
+    const libByKey = new Map(library.map((d) => [d.key, d]));
+    return extractLibraryPlaceholderKeys(editing.bodyTemplate).map((key) => {
+      const def = libByKey.get(key);
+      return {
+        key,
+        displayName: def?.displayName ?? '(pending…)',
+        type: def ? typeLabel(def.type) : 'text',
+      };
     });
   });
 
-  function toDisplayName(key: string): string {
-    const spaced = key.replace(/[_\-]+/g, ' ').trim();
-    return spaced.length === 0 ? key : spaced.charAt(0).toUpperCase() + spaced.slice(1);
-  }
-
   /**
-   * Inserts `{{ key }}` at the caret. If we're in autocomplete mode (the caret
-   * is inside a partial `{{ foo`), replace the partial with the full token
-   * including the closing `}}` instead of nesting.
+   * When a library-bound key appears in the body and isn't in the library yet,
+   * fire-and-forget an ensure() to create it. Dexie's liveQuery refreshes
+   * `library` automatically on the next microtask.
    */
+  let _lastEnsuredKeys = new Set<string>();
+  $effect(() => {
+    if (!editing) return;
+    const keys = extractLibraryPlaceholderKeys(editing.bodyTemplate);
+    const existing = new Set(library.map((d) => d.key));
+    for (const key of keys) {
+      if (existing.has(key)) continue;
+      if (_lastEnsuredKeys.has(key)) continue;
+      _lastEnsuredKeys.add(key);
+      void ensurePlaceholder(key);
+    }
+  });
+
   async function insertPlaceholderAtCaret(key: string) {
     if (!editing || !bodyTextarea) return;
     const body = editing.bodyTemplate ?? '';
@@ -134,8 +144,6 @@
     let newCaret: number;
 
     if (autocompleteQuery != null) {
-      // Replace from the last `{{` before the caret to the caret with the
-      // complete `{{ key }}` token.
       const left = body.slice(0, start);
       const openIdx = left.lastIndexOf('{{');
       const replaced = `{{ ${key} }}`;
@@ -154,66 +162,9 @@
     caretPos = newCaret;
   }
 
-  /** Keep the tracked caret position fresh so autocompleteQuery is reactive. */
   function syncCaret() {
     if (!bodyTextarea) return;
     caretPos = bodyTextarea.selectionStart ?? 0;
-  }
-
-  const autosave = createAutosave<PostTemplate>({
-    get: () => editing,
-    save: async (snap) => {
-      await saveTemplate(snap);
-    },
-    delayMs: 500,
-    onStatus: (s) => (saveStatus = s),
-  });
-  $effect(autosave.watch);
-
-  function edit(t: PostTemplate) {
-    // Flush any pending save from the previous item before switching.
-    void autosave.flush();
-    editing = {
-      ...t,
-      defaultThemeTags: [...t.defaultThemeTags],
-      placeholderSchema: t.placeholderSchema.map((p) => ({ ...p })),
-    };
-    defaultTagsInput = t.defaultThemeTags.join(' ');
-  }
-
-  async function close() {
-    await autosave.flush();
-    editing = null;
-  }
-
-  async function addNew() {
-    await autosave.flush();
-    const id = await createTemplate();
-    const t = await db.templates.get(id);
-    if (t) edit(t);
-  }
-
-  function addPlaceholder() {
-    if (!editing) return;
-    editing.placeholderSchema.push({
-      key: `field${editing.placeholderSchema.length + 1}`,
-      displayName: 'New field',
-      isRequired: false,
-      type: PlaceholderType.Text,
-    });
-    editing.placeholderSchema = editing.placeholderSchema; // reactivity
-  }
-
-  function removePlaceholder(p: PlaceholderDefinition) {
-    if (!editing) return;
-    editing.placeholderSchema = editing.placeholderSchema.filter((x) => x !== p);
-  }
-
-  async function remove(t: PostTemplate) {
-    if (!t.id) return;
-    if (!confirm(`Delete template "${t.name}"?`)) return;
-    await deleteTemplate(t.id);
-    if (editing?.id === t.id) editing = null;
   }
 
   const statusLabel = $derived.by(() => {
@@ -225,6 +176,16 @@
       default:       return '';
     }
   });
+
+  function typeLabel(t: number): string {
+    switch (t) {
+      case 1:  return 'VK link';
+      case 4:  return 'wiki link';
+      case 2:  return 'URL';
+      case 3:  return 'tags';
+      default: return 'text';
+    }
+  }
 </script>
 
 <div class="editor-layout">
@@ -246,9 +207,7 @@
             onclick={() => edit(t)}
           >
             <strong>{t.name}</strong>
-            <span class="meta">
-              {new Date(t.updatedAt).toLocaleString()}
-            </span>
+            <span class="meta">{new Date(t.updatedAt).toLocaleString()}</span>
           </button>
         {/each}
       </div>
@@ -291,7 +250,7 @@
             onselect={syncCaret}
           ></textarea>
 
-          <!-- Quick-add toolbar — doubles as a filtered list during autocomplete. -->
+          <!-- Chip toolbar — quick insert + autocomplete -->
           <div class="placeholder-chiprow">
             {#if autocompleteQuery != null}
               <span class="muted" style="font-size: 0.75rem;">
@@ -305,21 +264,18 @@
                 type="button"
                 class="chip {isBuiltInPlaceholder(key) ? 'chip-global' : 'chip-user'}"
                 onclick={() => insertPlaceholderAtCaret(key)}
-                title={isBuiltInPlaceholder(key)
-                  ? 'Built-in global — available in every template'
-                  : 'Defined in this template'}
               >{`{{ ${key} }}`}</button>
             {/each}
             {#if suggestedKeys.length === 0}
               <span class="muted" style="font-size: 0.78rem;">
-                No matches. Type a name and a placeholder row will be added for you.
+                No matches. Type the name — a placeholder row will be added for you.
               </span>
             {/if}
           </div>
 
           <span class="muted">
             Scriban-like <code>{'{{ placeholder }}'}</code> syntax.
-            Placeholders you reference here auto-appear in the list below.
+            New keys auto-appear on the Placeholders tab.
           </span>
         </div>
         <div class="stack">
@@ -327,45 +283,28 @@
           <input id="t-dtags" type="text" bind:value={defaultTagsInput} />
         </div>
 
-        <div class="card-header" style="margin: 0.5rem 0 0;">
-          <h4 style="margin: 0;">Placeholders</h4>
-          <button class="btn btn-outline btn-sm" onclick={addPlaceholder}>+ Add placeholder</button>
+        <div>
+          <h4 style="margin: 1rem 0 0.4rem;">Placeholders used</h4>
+          <p class="muted" style="margin: 0 0 0.4rem;">
+            Derived from the Body. Edit definitions on the <strong>Placeholders</strong> tab —
+            changes propagate to every template using that key.
+          </p>
+          {#if usedPlaceholders.length === 0}
+            <p class="muted">
+              None yet. Type <code>{'{{ my_key }}'}</code> in the Body to add one.
+            </p>
+          {:else}
+            <div class="stack" style="gap: 0.25rem;">
+              {#each usedPlaceholders as u (u.key)}
+                <div class="used-row">
+                  <code>{`{{ ${u.key} }}`}</code>
+                  <span>{u.displayName}</span>
+                  <span class="muted">{u.type}</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
         </div>
-
-        {#if editing.placeholderSchema.length === 0}
-          <p class="muted">No placeholders yet.</p>
-        {:else}
-          <div class="stack-lg">
-            {#each editing.placeholderSchema as p, idx (idx)}
-              <div class="placeholder-row">
-                <label class="stack cell-key">
-                  <span>Key</span>
-                  <input type="text" bind:value={p.key} />
-                </label>
-                <label class="stack cell-display">
-                  <span>Display name</span>
-                  <input type="text" bind:value={p.displayName} />
-                </label>
-                <label class="stack cell-type">
-                  <span>Type</span>
-                  <select bind:value={p.type}>
-                    {#each typeOptions as opt (opt.v)}
-                      <option value={opt.v}>{opt.label}</option>
-                    {/each}
-                  </select>
-                </label>
-                <label class="cell-required">
-                  <input type="checkbox" bind:checked={p.isRequired} /> Required
-                </label>
-                <button
-                  class="btn btn-danger btn-sm cell-remove"
-                  onclick={() => removePlaceholder(p)}
-                  aria-label="Remove placeholder"
-                >🗑</button>
-              </div>
-            {/each}
-          </div>
-        {/if}
 
         {#if editing.id != null}
           <div style="margin-top: 0.5rem;">
@@ -378,3 +317,15 @@
     {/if}
   </section>
 </div>
+
+<style>
+  .used-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 0.6rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--vk-border);
+    border-radius: 6px;
+    align-items: center;
+  }
+</style>

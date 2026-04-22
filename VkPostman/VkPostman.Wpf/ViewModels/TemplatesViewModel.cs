@@ -1,6 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Collections.Specialized;
-using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using VkPostman.Core.Models;
@@ -11,67 +9,45 @@ namespace VkPostman.Wpf.ViewModels;
 public partial class TemplatesViewModel : ObservableObject
 {
     private readonly TemplateService _templates;
+    private readonly PlaceholderService _placeholders;
 
     public ObservableCollection<PostTemplate> Templates { get; } = new();
 
-    public Array PlaceholderTypes { get; } = Enum.GetValues(typeof(PlaceholderType));
+    /// <summary>Every library definition (for chip-toolbar lookups + autocomplete).</summary>
+    public ObservableCollection<PlaceholderDefinition> Library { get; } = new();
 
     [ObservableProperty] private PostTemplate? selectedTemplate;
     [ObservableProperty] private bool isEditing;
     [ObservableProperty] private string defaultTagsInput = "";
 
-    // Mutable editor wrapper — PlaceholderDefinition is an immutable record,
-    // so WPF two-way binding can't drive it directly.
-    public ObservableCollection<PlaceholderEditRow> PlaceholderEditorItems { get; } = new();
-
-    /// <summary>
-    /// The chip toolbar shown under the Body textbox. Rebuilt whenever the
-    /// schema changes, the body changes, or the caret moves into / out of a
-    /// partial <c>{{ … </c>. Filters down to autocomplete matches when the
-    /// caret is inside an unclosed expression.
-    /// </summary>
-    public ObservableCollection<PlaceholderSuggestion> PlaceholderSuggestions { get; } = new();
-
-    /// <summary>The body text currently in the editor — bound to the TextBox.</summary>
+    /// <summary>Editable body text bound to the TextBox (mirrored into <see cref="SelectedTemplate"/>).</summary>
     [ObservableProperty] private string bodyText = "";
 
-    /// <summary>Where the caret sits in <see cref="BodyText"/> — bound from the TextBox.</summary>
+    /// <summary>Caret position inside the body (two-way bridged from the view).</summary>
     [ObservableProperty] private int bodyCaret;
 
-    /// <summary>Non-null when the caret is between an open <c>{{</c> and a not-yet-closed end.</summary>
+    /// <summary>When caret is inside an unclosed <c>{{</c>, the partial typed after it.</summary>
     [ObservableProperty] private string? autocompleteQuery;
+
+    /// <summary>Chip-toolbar items, filtered when autocomplete is active.</summary>
+    public ObservableCollection<PlaceholderSuggestion> PlaceholderSuggestions { get; } = new();
+
+    /// <summary>Rows shown in the "Placeholders used" section — derived from body + library.</summary>
+    public ObservableCollection<UsedPlaceholderRow> UsedPlaceholders { get; } = new();
 
     public Autosave<PostTemplate> Autosave { get; }
 
-    public TemplatesViewModel(TemplateService templates)
+    public TemplatesViewModel(TemplateService templates, PlaceholderService placeholders)
     {
         _templates = templates;
+        _placeholders = placeholders;
 
         Autosave = new Autosave<PostTemplate>(
             get:  () => SelectedTemplate is { Id: > 0 } t ? t : null,
             save: SaveCurrentAsync);
         Autosave.Start();
 
-        // Rebuild the chip toolbar whenever the schema grows or a row renames
-        // its Key, so the "user-defined" chips track whatever's in the list.
-        PlaceholderEditorItems.CollectionChanged += OnSchemaChanged;
-
         _ = LoadAsync();
-    }
-
-    private void OnSchemaChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        if (e.NewItems is not null)
-            foreach (PlaceholderEditRow r in e.NewItems) r.PropertyChanged += OnSchemaRowChanged;
-        if (e.OldItems is not null)
-            foreach (PlaceholderEditRow r in e.OldItems) r.PropertyChanged -= OnSchemaRowChanged;
-        RecomputeSuggestions();
-    }
-
-    private void OnSchemaRowChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(PlaceholderEditRow.Key))
-            RecomputeSuggestions();
     }
 
     private async Task LoadAsync()
@@ -79,19 +55,24 @@ public partial class TemplatesViewModel : ObservableObject
         Templates.Clear();
         foreach (var t in await _templates.GetAllAsync())
             Templates.Add(t);
+        await RefreshLibraryAsync();
     }
 
-    /// <summary>Autosave callback — drains UI buffers into the entity and persists.</summary>
+    private async Task RefreshLibraryAsync()
+    {
+        Library.Clear();
+        foreach (var d in await _placeholders.GetAllAsync())
+            Library.Add(d);
+        RecomputeSuggestions();
+        RecomputeUsedPlaceholders();
+    }
+
     private async Task SaveCurrentAsync(PostTemplate t)
     {
         t.DefaultThemeTags = DefaultTagsInput
             .Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Select(x => x.TrimStart('#'))
             .Where(x => !string.IsNullOrWhiteSpace(x))
-            .ToList();
-
-        t.PlaceholderSchema = PlaceholderEditorItems
-            .Select(r => r.ToDefinition())
             .ToList();
 
         await _templates.UpdateAsync(t);
@@ -101,20 +82,17 @@ public partial class TemplatesViewModel : ObservableObject
     private async Task NewTemplateAsync()
     {
         await Autosave.FlushAsync();
-
         var t = new PostTemplate
         {
             Name = "New template",
             BodyTemplate = "{{ common_text }}\n\n{{ group_tags }} {{ theme_tags }}",
-            PlaceholderSchema = new List<PlaceholderDefinition>(),
             DefaultThemeTags = new List<string>(),
         };
         await _templates.AddAsync(t);
         Templates.Insert(0, t);
-
         SelectedTemplate = t;
         DefaultTagsInput = "";
-        PlaceholderEditorItems.Clear();
+        BodyText = t.BodyTemplate;
         IsEditing = true;
         await Autosave.ResetAsync();
     }
@@ -124,32 +102,7 @@ public partial class TemplatesViewModel : ObservableObject
     {
         if (template is null) return;
         await Autosave.FlushAsync();
-
         SelectedTemplate = template;
-        DefaultTagsInput = string.Join(" ", template.DefaultThemeTags);
-        PlaceholderEditorItems.Clear();
-        foreach (var def in template.PlaceholderSchema)
-            PlaceholderEditorItems.Add(PlaceholderEditRow.From(def));
-        IsEditing = true;
-        await Autosave.ResetAsync();
-    }
-
-    [RelayCommand]
-    private void AddPlaceholder()
-    {
-        PlaceholderEditorItems.Add(new PlaceholderEditRow
-        {
-            Key         = $"field{PlaceholderEditorItems.Count + 1}",
-            DisplayName = "New field",
-            IsRequired  = false,
-            Type        = PlaceholderType.Text,
-        });
-    }
-
-    [RelayCommand]
-    private void RemovePlaceholder(PlaceholderEditRow? row)
-    {
-        if (row is not null) PlaceholderEditorItems.Remove(row);
     }
 
     [RelayCommand]
@@ -158,6 +111,7 @@ public partial class TemplatesViewModel : ObservableObject
         await Autosave.FlushAsync();
         IsEditing = false;
         SelectedTemplate = null;
+        UsedPlaceholders.Clear();
     }
 
     [RelayCommand]
@@ -173,6 +127,7 @@ public partial class TemplatesViewModel : ObservableObject
             {
                 SelectedTemplate = null;
                 IsEditing = false;
+                UsedPlaceholders.Clear();
             }
         }
         finally
@@ -183,34 +138,34 @@ public partial class TemplatesViewModel : ObservableObject
 
     partial void OnSelectedTemplateChanged(PostTemplate? value)
     {
-        if (value is null) return;
+        if (value is null)
+        {
+            IsEditing = false;
+            UsedPlaceholders.Clear();
+            return;
+        }
         DefaultTagsInput = string.Join(" ", value.DefaultThemeTags);
-        PlaceholderEditorItems.Clear();
-        foreach (var def in value.PlaceholderSchema)
-            PlaceholderEditorItems.Add(PlaceholderEditRow.From(def));
         BodyText = value.BodyTemplate ?? string.Empty;
         IsEditing = true;
         _ = Autosave.ResetAsync();
+        RecomputeUsedPlaceholders();
     }
 
     // ---- Body / autocomplete / auto-sync ------------------------------------
 
-    /// <summary>
-    /// Body is edited via <see cref="BodyText"/> (bound to the TextBox), then
-    /// pushed back onto the entity so autosave sees the change.
-    /// </summary>
     partial void OnBodyTextChanged(string value)
     {
         if (SelectedTemplate is null) return;
         SelectedTemplate.BodyTemplate = value;
         RecomputeAutocompleteQuery();
-        AutoAddReferencedPlaceholders();
+        _ = AutoEnsureReferencedPlaceholdersAsync();
         RecomputeSuggestions();
+        RecomputeUsedPlaceholders();
     }
 
     partial void OnBodyCaretChanged(int value)
     {
-        _ = value; // used only to trigger the query recompute
+        _ = value;
         RecomputeAutocompleteQuery();
         RecomputeSuggestions();
     }
@@ -227,48 +182,41 @@ public partial class TemplatesViewModel : ObservableObject
         AutocompleteQuery = between.TrimStart();
     }
 
-    /// <summary>Appends a row to the schema for every referenced key that isn't already there.</summary>
-    private void AutoAddReferencedPlaceholders()
+    /// <summary>
+    /// For every body-referenced key that isn't a built-in, make sure there's a
+    /// library entry. Creates a Text-type row with a default display name if not.
+    /// </summary>
+    private async Task AutoEnsureReferencedPlaceholdersAsync()
     {
         if (SelectedTemplate is null) return;
-        var existing = PlaceholderEditorItems.Select(r => r.Key).ToHashSet(StringComparer.Ordinal);
-        foreach (var key in SelectedTemplate.ExtractPlaceholders())
+        var keys = SelectedTemplate.ExtractLibraryPlaceholders().ToList();
+        var knownKeys = Library.Select(d => d.Key).ToHashSet(StringComparer.Ordinal);
+        var added = false;
+        foreach (var key in keys)
         {
-            if (PostTemplate.IsBuiltInPlaceholder(key)) continue;
-            if (!existing.Add(key)) continue;
-            PlaceholderEditorItems.Add(new PlaceholderEditRow
-            {
-                Key         = key,
-                DisplayName = ToDisplayName(key),
-                IsRequired  = false,
-                Type        = PlaceholderType.Text,
-            });
+            if (knownKeys.Contains(key)) continue;
+            var def = await _placeholders.EnsureAsync(key);
+            Library.Add(def);
+            knownKeys.Add(key);
+            added = true;
         }
-    }
-
-    private static string ToDisplayName(string key)
-    {
-        var spaced = key.Replace('_', ' ').Replace('-', ' ').Trim();
-        if (spaced.Length == 0) return key;
-        return char.ToUpperInvariant(spaced[0]) + spaced[1..];
+        if (added)
+        {
+            RecomputeSuggestions();
+            RecomputeUsedPlaceholders();
+        }
     }
 
     private void RecomputeSuggestions()
     {
         PlaceholderSuggestions.Clear();
-        var schemaKeys = PlaceholderEditorItems
-            .Select(r => r.Key)
-            .Where(k => !string.IsNullOrWhiteSpace(k));
-
-        var all = schemaKeys
+        var all = Library.Select(d => d.Key)
             .Concat(PostTemplate.BuiltInPlaceholders)
             .Distinct(StringComparer.Ordinal);
 
         var q = AutocompleteQuery;
         if (!string.IsNullOrEmpty(q))
-        {
             all = all.Where(k => k.StartsWith(q, StringComparison.OrdinalIgnoreCase));
-        }
 
         foreach (var key in all)
         {
@@ -278,10 +226,21 @@ public partial class TemplatesViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Insert <c>{{ key }}</c> at the caret — or, if we're mid-autocomplete,
-    /// replace the partial <c>{{ prefix</c> with a complete token.
-    /// </summary>
+    private void RecomputeUsedPlaceholders()
+    {
+        UsedPlaceholders.Clear();
+        if (SelectedTemplate is null) return;
+
+        foreach (var key in SelectedTemplate.ExtractLibraryPlaceholders())
+        {
+            var def = Library.FirstOrDefault(d => d.Key == key);
+            UsedPlaceholders.Add(new UsedPlaceholderRow(
+                Key: key,
+                DisplayName: def?.DisplayName ?? "(pending…)",
+                Type: def?.Type.ToString() ?? "Text"));
+        }
+    }
+
     [RelayCommand]
     private void InsertPlaceholder(string? key)
     {
@@ -308,43 +267,15 @@ public partial class TemplatesViewModel : ObservableObject
         }
 
         BodyText = newBody;
-        // Move the caret after the inserted token. The view binds BodyCaret
-        // two-way so updating it here repositions the TextBox selection.
         BodyCaret = newCaret;
     }
 }
 
-/// <summary>A row in the chip toolbar — one placeholder key, plus whether it's a global.</summary>
+/// <summary>Chip-toolbar entry in the template editor.</summary>
 public sealed record PlaceholderSuggestion(string Key, bool IsGlobal)
 {
-    /// <summary>Rendered label, e.g. <c>{{ common_text }}</c>.</summary>
     public string Display => $"{{{{ {Key} }}}}";
 }
 
-public partial class PlaceholderEditRow : ObservableObject
-{
-    [ObservableProperty] private string key = "";
-    [ObservableProperty] private string displayName = "";
-    [ObservableProperty] private bool isRequired;
-    [ObservableProperty] private PlaceholderType type = PlaceholderType.Text;
-    [ObservableProperty] private string? description;
-    [ObservableProperty] private string? defaultValue;
-
-    public static PlaceholderEditRow From(PlaceholderDefinition def) => new()
-    {
-        Key = def.Key,
-        DisplayName = def.DisplayName,
-        IsRequired = def.IsRequired,
-        Type = def.Type,
-        Description = def.Description,
-        DefaultValue = def.DefaultValue,
-    };
-
-    public PlaceholderDefinition ToDefinition() => new(
-        Key: Key,
-        DisplayName: DisplayName,
-        IsRequired: IsRequired,
-        Type: Type,
-        Description: Description,
-        DefaultValue: DefaultValue);
-}
+/// <summary>One row in the "Placeholders used" section of the template editor.</summary>
+public sealed record UsedPlaceholderRow(string Key, string DisplayName, string Type);

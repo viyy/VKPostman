@@ -10,13 +10,25 @@ public class VkPostmanDbContext : DbContext
     {
     }
 
-    public DbSet<PostTemplate> PostTemplates { get; set; } = null!;
-    public DbSet<TargetGroup>  TargetGroups  { get; set; } = null!;
-    public DbSet<PostDraft>    PostDrafts    { get; set; } = null!;
+    public DbSet<PostTemplate>          PostTemplates          { get; set; } = null!;
+    public DbSet<TargetGroup>           TargetGroups           { get; set; } = null!;
+    public DbSet<PostDraft>             PostDrafts             { get; set; } = null!;
+    public DbSet<PlaceholderDefinition> PlaceholderDefinitions { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        // ---- PlaceholderDefinition (shared library) ----
+        modelBuilder.Entity<PlaceholderDefinition>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Key).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(200);
+            entity.Property(e => e.DefaultValue).HasMaxLength(200);
+            entity.HasIndex(e => e.Key).IsUnique();
+        });
 
         // ---- PostTemplate ----
         modelBuilder.Entity<PostTemplate>(entity =>
@@ -30,11 +42,6 @@ public class VkPostmanDbContext : DbContext
                 .HasConversion(
                     v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
                     v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>());
-
-            entity.Property(e => e.PlaceholderSchema)
-                .HasConversion(
-                    v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                    v => JsonSerializer.Deserialize<List<PlaceholderDefinition>>(v, (JsonSerializerOptions?)null) ?? new List<PlaceholderDefinition>());
         });
 
         // ---- TargetGroup ----
@@ -54,7 +61,6 @@ public class VkPostmanDbContext : DbContext
                     v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
                     v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>());
 
-            // Nullable FK so deleting a template doesn't take its groups with it.
             entity.HasOne(g => g.PostTemplate)
                   .WithMany()
                   .HasForeignKey(g => g.PostTemplateId)

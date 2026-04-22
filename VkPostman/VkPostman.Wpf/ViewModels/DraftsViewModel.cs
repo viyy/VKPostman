@@ -14,7 +14,11 @@ public partial class DraftsViewModel : ObservableObject
 {
     private readonly DraftService _drafts;
     private readonly GroupService _groups;
+    private readonly PlaceholderService _placeholders;
     private readonly ITemplateEngine _engine;
+
+    /// <summary>Fresh-every-render snapshot of the library, keyed by key.</summary>
+    private Dictionary<string, PlaceholderDefinition> _library = new(StringComparer.Ordinal);
 
     public ObservableCollection<PostDraft> Drafts { get; } = new();
     public ObservableCollection<GroupSelection> AllGroups { get; } = new();
@@ -24,16 +28,22 @@ public partial class DraftsViewModel : ObservableObject
     [ObservableProperty] private PostDraft? currentDraft;
     [ObservableProperty] private string themeTagsInput = "";
 
-    public DraftsViewModel(DraftService drafts, GroupService groups, ITemplateEngine engine)
+    public DraftsViewModel(
+        DraftService drafts,
+        GroupService groups,
+        PlaceholderService placeholders,
+        ITemplateEngine engine)
     {
         _drafts = drafts;
         _groups = groups;
+        _placeholders = placeholders;
         _engine = engine;
         _ = InitAsync();
     }
 
     private async Task InitAsync()
     {
+        _library = await _placeholders.GetLibraryMapAsync();
         await ReloadDraftsAsync();
         await ReloadGroupsAsync();
     }
@@ -77,7 +87,6 @@ public partial class DraftsViewModel : ObservableObject
         CurrentDraft = draft;
         ThemeTagsInput = string.Join(" ", draft.ThemeTags);
 
-        // Sync checkbox state of group selections to this draft.
         foreach (var sel in AllGroups)
         {
             sel.PropertyChanged -= OnGroupSelectionChanged;
@@ -100,7 +109,6 @@ public partial class DraftsViewModel : ObservableObject
             .Where(t => !string.IsNullOrWhiteSpace(t))
             .ToList();
 
-        // Drain placeholder row values into the dict (handles both single-field and WikiLink rows).
         foreach (var row in Placeholders)
             CurrentDraft.PlaceholderValues[row.Key] = row.EncodedValue;
 
@@ -110,6 +118,10 @@ public partial class DraftsViewModel : ObservableObject
             .ToList();
 
         await _drafts.UpdateAsync(CurrentDraft);
+
+        // Refresh library in case the user added a placeholder in the Templates
+        // tab between edits — otherwise we'd render with stale definitions.
+        _library = await _placeholders.GetLibraryMapAsync();
         await ReloadDraftsAsync();
         RecomputeRenders();
     }
@@ -143,13 +155,7 @@ public partial class DraftsViewModel : ObservableObject
                 UseShellExecute = true,
             });
         }
-        catch { /* default browser open can fail; user can copy the URL manually */ }
-    }
-
-    partial void OnCurrentDraftChanged(PostDraft? value)
-    {
-        // If the draft changes, re-sync selections & placeholders.
-        if (value is null) return;
+        catch { }
     }
 
     private void OnGroupSelectionChanged(object? sender, PropertyChangedEventArgs e)
@@ -172,24 +178,22 @@ public partial class DraftsViewModel : ObservableObject
             return;
         }
 
-        var usages = CurrentDraft.UnionedPlaceholders(SelectedGroups())
-            .OrderBy(u => u.Definition.DisplayName)
+        var usages = CurrentDraft.UnionedPlaceholders(SelectedGroups(), _library)
+            .OrderBy(u => u.Definition?.DisplayName ?? u.Key)
             .ToList();
 
-        // Preserve typed-but-not-yet-saved values by reading from Placeholders first, then falling back.
         var liveValues = Placeholders.ToDictionary(p => p.Key, p => (string?)p.EncodedValue, StringComparer.Ordinal);
 
         Placeholders.Clear();
         foreach (var u in usages)
         {
-            var existing = liveValues.TryGetValue(u.Definition.Key, out var liveV)
+            var existing = liveValues.TryGetValue(u.Key, out var liveV)
                 ? liveV
-                : (CurrentDraft.PlaceholderValues.TryGetValue(u.Definition.Key, out var dbV) ? dbV : null);
+                : (CurrentDraft.PlaceholderValues.TryGetValue(u.Key, out var dbV) ? dbV : null);
 
-            var row = new PlaceholderRow(u.Definition, string.Join(", ", u.UsedByGroups), existing);
+            var row = new PlaceholderRow(u.Key, u.Definition, string.Join(", ", u.UsedByGroups), existing);
             row.PropertyChanged += (_, e) =>
             {
-                // Any value-bearing property change → re-encode and re-render.
                 if (e.PropertyName is nameof(PlaceholderRow.Value)
                                     or nameof(PlaceholderRow.WikiTarget)
                                     or nameof(PlaceholderRow.WikiDisplay))
@@ -201,9 +205,6 @@ public partial class DraftsViewModel : ObservableObject
             Placeholders.Add(row);
         }
     }
-
-    /// <summary>Helper for the per-row `liveValues` preservation — returns the current encoded value.</summary>
-    private string? PlaceholderLiveValue(PlaceholderRow row) => row.EncodedValue;
 
     private void RecomputeRenders()
     {
@@ -217,7 +218,7 @@ public partial class DraftsViewModel : ObservableObject
             {
                 rendered = g.PostTemplate is null
                     ? "[This group has no template assigned.]"
-                    : CurrentDraft.RenderForGroup(g, _engine);
+                    : CurrentDraft.RenderForGroup(g, _engine, _library);
             }
             catch (Exception ex)
             {
@@ -257,14 +258,17 @@ public partial class GroupSelection : ObservableObject
     }
 }
 
+/// <summary>
+/// One row in the Drafts editor placeholder list. Wraps a library definition
+/// (may be null while a newly-referenced key is still being persisted).
+/// </summary>
 public partial class PlaceholderRow : ObservableObject
 {
-    public PlaceholderDefinition Definition { get; }
-    public string Key => Definition.Key;
-    public string DisplayName => Definition.DisplayName;
-    public bool IsRequired => Definition.IsRequired;
+    public string Key { get; }
+    public PlaceholderDefinition? Definition { get; }
+    public string DisplayName => Definition?.DisplayName ?? Key;
     public string UsageHint { get; }
-    public string TypeLabel => Definition.Type switch
+    public string TypeLabel => (Definition?.Type ?? PlaceholderType.Text) switch
     {
         PlaceholderType.VkLink   => "VK link",
         PlaceholderType.WikiLink => "wiki link",
@@ -273,34 +277,24 @@ public partial class PlaceholderRow : ObservableObject
         _                        => "text",
     };
 
-    public bool IsWikiLink    => Definition.Type == PlaceholderType.WikiLink;
+    public bool IsWikiLink    => Definition?.Type == PlaceholderType.WikiLink;
     public bool IsSingleField => !IsWikiLink;
 
-    /// <summary>The single-field value (Text / VkLink / Url / TagList).</summary>
     [ObservableProperty] private string? value;
-
-    /// <summary>WikiLink field 1 — the <c>@target</c> / <c>club123</c> part.</summary>
     [ObservableProperty] private string? wikiTarget;
-
-    /// <summary>WikiLink field 2 — the displayed text shown to readers.</summary>
     [ObservableProperty] private string? wikiDisplay;
 
-    /// <summary>What we actually persist into the draft's PlaceholderValues dictionary.</summary>
     public string EncodedValue =>
-        Definition.Type == PlaceholderType.WikiLink
+        IsWikiLink
             ? PlaceholderDefinition.PackWikiLink(WikiTarget, WikiDisplay)
             : Value ?? "";
 
-    public PlaceholderRow(PlaceholderDefinition definition, string usageHint, string? existing = null)
+    public PlaceholderRow(string key, PlaceholderDefinition? definition, string usageHint, string? existing = null)
     {
+        Key = key;
         Definition = definition;
         UsageHint = usageHint;
-        Populate(existing);
-    }
-
-    private void Populate(string? existing)
-    {
-        if (Definition.Type == PlaceholderType.WikiLink)
+        if (IsWikiLink)
         {
             var (target, display) = PlaceholderDefinition.SplitWikiLink(existing);
             WikiTarget  = target;

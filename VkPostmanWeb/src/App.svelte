@@ -2,9 +2,10 @@
   import DraftsView from './views/DraftsView.svelte';
   import TemplatesView from './views/TemplatesView.svelte';
   import GroupsView from './views/GroupsView.svelte';
+  import PlaceholdersView from './views/PlaceholdersView.svelte';
   import { downloadExport, exportAll, importFromFile } from './lib/exchange';
 
-  type Tab = 'drafts' | 'templates' | 'groups';
+  type Tab = 'drafts' | 'templates' | 'placeholders' | 'groups';
   let tab = $state<Tab>((localStorage.getItem('vkp.tab') as Tab | null) ?? 'drafts');
   $effect(() => {
     localStorage.setItem('vkp.tab', tab);
@@ -22,7 +23,10 @@
       downloadExport(data);
       ioMessage = {
         ok: true,
-        text: `Downloaded ${data.templates.length} templates, ${data.groups.length} groups, ${data.drafts.length} drafts.`,
+        text:
+          `Downloaded ${data.placeholders.length} placeholders, ` +
+          `${data.templates.length} templates, ` +
+          `${data.groups.length} groups, ${data.drafts.length} drafts.`,
       };
     } catch (err) {
       ioMessage = { ok: false, text: `Export failed: ${(err as Error).message}` };
@@ -49,7 +53,10 @@
       const summary = await importFromFile(file);
       ioMessage = {
         ok: true,
-        text: `Imported ${summary.templates} templates, ${summary.groups} groups, ${summary.drafts} drafts.`,
+        text:
+          `Imported ${summary.placeholders} placeholders, ` +
+          `${summary.templates} templates, ` +
+          `${summary.groups} groups, ${summary.drafts} drafts.`,
       };
     } catch (err) {
       ioMessage = { ok: false, text: `Import failed: ${(err as Error).message}` };
@@ -111,6 +118,13 @@
     >📄 Templates</button>
     <button
       class="tab"
+      class:active={tab === 'placeholders'}
+      role="tab"
+      aria-selected={tab === 'placeholders'}
+      onclick={() => (tab = 'placeholders')}
+    >🏷 Placeholders</button>
+    <button
+      class="tab"
       class:active={tab === 'groups'}
       role="tab"
       aria-selected={tab === 'groups'}
@@ -123,6 +137,8 @@
       <DraftsView />
     {:else if tab === 'templates'}
       <TemplatesView />
+    {:else if tab === 'placeholders'}
+      <PlaceholdersView />
     {:else}
       <GroupsView />
     {/if}

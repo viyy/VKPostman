@@ -3,27 +3,35 @@ using System.Text.RegularExpressions;
 
 namespace VkPostman.Core.Models;
 
-public record PlaceholderDefinition(
-    [property: Required, StringLength(50)] string Key,
-    [property: Required, StringLength(100)] string DisplayName,
-    bool IsRequired,
-    PlaceholderType Type,
-    [property: StringLength(200)] string? Description = null,
-    [property: StringLength(100)] string? ValidationPattern = null,
-    [property: StringLength(200)] string? DefaultValue = null)
+/// <summary>
+/// A placeholder definition in the shared library. One row per unique <see cref="Key"/>;
+/// every template that references <c>{{ key }}</c> in its body pulls its type and
+/// display name from here. Edits propagate to every template that uses the key.
+/// </summary>
+public class PlaceholderDefinition
 {
-    /// <summary>
-    /// ASCII unit-separator — used to pack two fields (target + display text) into the single
-    /// string slot the <see cref="PostDraft.PlaceholderValues"/> dictionary provides. Humans
-    /// don't type this, so it's safe as a delimiter.
-    /// </summary>
-    public const char WikiLinkSeparator = '\u001F';
+    public int Id { get; set; }
+
+    /// <summary>Identifier referenced in a template body as <c>{{ key }}</c>.</summary>
+    [Required, StringLength(50)]
+    public string Key { get; set; } = string.Empty;
+
+    [Required, StringLength(100)]
+    public string DisplayName { get; set; } = string.Empty;
+
+    public PlaceholderType Type { get; set; }
+
+    [StringLength(200)]
+    public string? Description { get; set; }
+
+    [StringLength(200)]
+    public string? DefaultValue { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public bool Validate(string? value)
     {
-        if (IsRequired && string.IsNullOrWhiteSpace(value))
-            return false;
-
         if (string.IsNullOrEmpty(value))
             return true;
 
@@ -57,6 +65,24 @@ public record PlaceholderDefinition(
         };
     }
 
+    // ---- Packing helpers ----------------------------------------------------
+
+    /// <summary>
+    /// ASCII unit-separator — packs two fields (target + display text) into the single
+    /// string slot the draft's PlaceholderValues dictionary provides.
+    /// </summary>
+    public const char WikiLinkSeparator = '\u001F';
+
+    public static (string Target, string Display) SplitWikiLink(string? packed)
+    {
+        if (string.IsNullOrEmpty(packed)) return ("", "");
+        var parts = packed.Split(WikiLinkSeparator, 2);
+        return (parts[0], parts.Length > 1 ? parts[1] : "");
+    }
+
+    public static string PackWikiLink(string? target, string? display) =>
+        $"{target ?? ""}{WikiLinkSeparator}{display ?? ""}";
+
     private static bool ValidateTagList(string value)
     {
         var tags = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -66,7 +92,6 @@ public record PlaceholderDefinition(
     private static bool ValidateWikiLink(string value)
     {
         var (target, _) = SplitWikiLink(value);
-        // Display text is optional (we fall back to target) — we just require a non-empty target.
         return !string.IsNullOrWhiteSpace(target);
     }
 
@@ -81,28 +106,14 @@ public record PlaceholderDefinition(
         if (string.IsNullOrWhiteSpace(rawTarget))
             return string.Empty;
 
-        // Strip any vk.com/ or @ the user typed in the target field.
         var target = VkLinkNormalizer.Normalize(rawTarget).TrimStart('@');
         var label  = string.IsNullOrWhiteSpace(display) ? target : display;
         return $"[{target}|{label}]";
     }
-
-    /// <summary>Unpacks a packed WikiLink value into (target, display).</summary>
-    public static (string Target, string Display) SplitWikiLink(string? packed)
-    {
-        if (string.IsNullOrEmpty(packed)) return ("", "");
-        var parts = packed.Split(WikiLinkSeparator, 2);
-        return (parts[0], parts.Length > 1 ? parts[1] : "");
-    }
-
-    public static string PackWikiLink(string? target, string? display) =>
-        $"{target ?? ""}{WikiLinkSeparator}{display ?? ""}";
 }
 
 /// <summary>
 /// Canonicalizes the many shapes a user might type when referring to a VK profile or community.
-/// Accepts: <c>nelfias</c>, <c>@nelfias</c>, <c>vk.com/nelfias</c>, <c>https://vk.com/nelfias</c>,
-/// trailing slashes, query strings. Outputs: <c>@shortname</c> (VK's post editor auto-links it).
 /// </summary>
 public static class VkLinkNormalizer
 {

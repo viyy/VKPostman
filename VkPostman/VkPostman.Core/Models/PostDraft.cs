@@ -6,7 +6,8 @@ namespace VkPostman.Core.Models;
 /// <summary>
 /// A draft post — pure common content that gets rendered once per selected
 /// <see cref="TargetGroup"/> using each group's own <see cref="PostTemplate"/>.
-/// No publishing/photo concerns; the rendered string is copied by hand into VK.
+/// Placeholder definitions come from the shared library, passed in as a
+/// dictionary keyed by <see cref="PlaceholderDefinition.Key"/>.
 /// </summary>
 public class PostDraft
 {
@@ -18,7 +19,7 @@ public class PostDraft
     /// <summary>Free-form body shared across every selected group; templates access it as <c>{{ common_text }}</c>.</summary>
     public string CommonText { get; set; } = string.Empty;
 
-    /// <summary>Union of placeholder values across the selected groups' templates.</summary>
+    /// <summary>Values entered for placeholders. Key matches <see cref="PlaceholderDefinition.Key"/>.</summary>
     public Dictionary<string, string> PlaceholderValues { get; set; } = new();
 
     /// <summary>Tags added to every group on top of each group's own <see cref="TargetGroup.MandatoryTags"/>.</summary>
@@ -30,48 +31,37 @@ public class PostDraft
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>
-    /// Ready when: at least one group is selected, each selected group has a template, and
-    /// every required placeholder across the union of those templates has a non-empty value.
+    /// Ready when: at least one group is selected, each selected group has a template,
+    /// and no required-ness check is applied (the library dropped IsRequired — fields
+    /// render as their default value when blank rather than blocking publish).
     /// </summary>
     public bool IsReadyToCopy(IEnumerable<TargetGroup> selectedGroups)
     {
         var groups = selectedGroups.ToList();
         if (groups.Count == 0) return false;
-        if (groups.Any(g => g.PostTemplate is null)) return false;
-
-        var requiredKeys = groups
-            .SelectMany(g => g.PostTemplate!.GetRequiredPlaceholders())
-            .Distinct();
-
-        return requiredKeys.All(k =>
-            PlaceholderValues.TryGetValue(k, out var v) &&
-            !string.IsNullOrWhiteSpace(v));
+        return groups.All(g => g.PostTemplate is not null);
     }
 
     /// <summary>
-    /// Union of placeholders across the selected groups' templates, carrying which groups
-    /// each one comes from so the UI can surface "used by: Group A, Group B". Stricter
-    /// required-ness wins if two templates disagree.
+    /// Union of placeholder keys across the selected groups' templates. Each key maps
+    /// to its library definition (or null if the library hasn't got one yet) plus the
+    /// list of groups whose body references it.
     /// </summary>
-    public IEnumerable<PlaceholderUsage> UnionedPlaceholders(IEnumerable<TargetGroup> selectedGroups)
+    public IEnumerable<PlaceholderUsage> UnionedPlaceholders(
+        IEnumerable<TargetGroup> selectedGroups,
+        IReadOnlyDictionary<string, PlaceholderDefinition> library)
     {
         var byKey = new Dictionary<string, PlaceholderUsage>(StringComparer.Ordinal);
         foreach (var group in selectedGroups)
         {
             if (group.PostTemplate is null) continue;
-            foreach (var def in group.PostTemplate.PlaceholderSchema)
+            foreach (var key in group.PostTemplate.ExtractLibraryPlaceholders())
             {
-                if (!byKey.TryGetValue(def.Key, out var usage))
+                if (!byKey.TryGetValue(key, out var usage))
                 {
-                    usage = new PlaceholderUsage(def, new List<string>());
-                    byKey[def.Key] = usage;
-                }
-                if (def.IsRequired && !usage.Definition.IsRequired)
-                {
-                    byKey[def.Key] = usage with
-                    {
-                        Definition = usage.Definition with { IsRequired = true }
-                    };
+                    library.TryGetValue(key, out var def);
+                    usage = new PlaceholderUsage(key, def, new List<string>());
+                    byKey[key] = usage;
                 }
                 usage.UsedByGroups.Add(group.DisplayName);
             }
@@ -79,34 +69,38 @@ public class PostDraft
         return byKey.Values;
     }
 
-    public string RenderForGroup(TargetGroup group, ITemplateEngine templateEngine)
+    public string RenderForGroup(
+        TargetGroup group,
+        ITemplateEngine templateEngine,
+        IReadOnlyDictionary<string, PlaceholderDefinition> library)
     {
         if (group.PostTemplate is null)
             throw new InvalidOperationException(
                 $"Group '{group.DisplayName}' has no template assigned — cannot render.");
 
-        // Let each placeholder's type normalize its value (VK links → @shortname, tags → #foo).
-        var schemaByKey = group.PostTemplate.PlaceholderSchema
-            .ToDictionary(d => d.Key, StringComparer.Ordinal);
-
-        var renderedValues = PlaceholderValues.ToDictionary(
-            kv => kv.Key,
-            kv => (object)(schemaByKey.TryGetValue(kv.Key, out var def) ? def.Render(kv.Value) : kv.Value),
-            StringComparer.Ordinal);
-
-        var context = new Dictionary<string, object>(renderedValues)
+        // Per-key render through library definitions (VK links → @shortname, tags → #foo).
+        var renderedValues = new Dictionary<string, object>(StringComparer.Ordinal);
+        foreach (var key in group.PostTemplate.ExtractLibraryPlaceholders())
         {
-            ["group_name"]  = group.DisplayName,
-            ["group_tags"]  = string.Join(" ", group.MandatoryTags.Select(Hashify)),
-            ["theme_tags"]  = string.Join(" ", ThemeTags.Select(Hashify)),
-            ["common_text"] = CommonText ?? string.Empty,
-        };
+            var rawValue = PlaceholderValues.TryGetValue(key, out var v) ? v : "";
+            renderedValues[key] = library.TryGetValue(key, out var def)
+                ? def.Render(rawValue)
+                : rawValue; // library miss — fall back to raw so render doesn't silently drop content
+        }
 
-        return templateEngine.Render(group.PostTemplate.BodyTemplate, context);
+        renderedValues["group_name"]  = group.DisplayName;
+        renderedValues["group_tags"]  = string.Join(" ", group.MandatoryTags.Select(Hashify));
+        renderedValues["theme_tags"]  = string.Join(" ", ThemeTags.Select(Hashify));
+        renderedValues["common_text"] = CommonText ?? string.Empty;
+
+        return templateEngine.Render(group.PostTemplate.BodyTemplate, renderedValues);
     }
 
     private static string Hashify(string t) => t.StartsWith('#') ? t : $"#{t}";
 }
 
-/// <summary>A placeholder seen in one or more selected templates, plus which groups use it.</summary>
-public sealed record PlaceholderUsage(PlaceholderDefinition Definition, List<string> UsedByGroups);
+/// <summary>
+/// A placeholder referenced by one or more selected templates, plus the library
+/// definition (if any) and which groups reference it by display name.
+/// </summary>
+public sealed record PlaceholderUsage(string Key, PlaceholderDefinition? Definition, List<string> UsedByGroups);

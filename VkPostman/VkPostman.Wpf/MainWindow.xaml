@@ -62,6 +62,9 @@
                     <RadioButton Content="📄   Templates"
                                  IsChecked="{Binding IsTemplatesSelected, Mode=TwoWay}"
                                  Style="{StaticResource SidebarNavButton}" />
+                    <RadioButton Content="🏷   Placeholders"
+                                 IsChecked="{Binding IsPlaceholdersSelected, Mode=TwoWay}"
+                                 Style="{StaticResource SidebarNavButton}" />
                     <RadioButton Content="👥   Groups"
                                  IsChecked="{Binding IsGroupsSelected, Mode=TwoWay}"
                                  Style="{StaticResource SidebarNavButton}" />

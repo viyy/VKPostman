@@ -125,54 +125,42 @@
                         <TextBlock Text="Default theme tags" Margin="0,12,0,4" />
                         <TextBox Text="{Binding DefaultTagsInput, UpdateSourceTrigger=PropertyChanged}" />
 
-                        <TextBlock Text="Placeholders" Style="{StaticResource SectionHeader}" Margin="0,16,0,4" />
-                        <ItemsControl ItemsSource="{Binding PlaceholderEditorItems}">
+                        <TextBlock Text="Placeholders used" Style="{StaticResource SectionHeader}" Margin="0,16,0,4" />
+                        <TextBlock Style="{StaticResource MutedText}" Margin="0,0,0,6"
+                                   Text="Derived from the Body. Edit definitions on the Placeholders tab — changes there propagate to every template using that key." />
+                        <ItemsControl ItemsSource="{Binding UsedPlaceholders}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border BorderBrush="{StaticResource VkBorderBrush}" BorderThickness="1"
-                                            CornerRadius="6" Padding="8" Margin="0,4">
+                                            CornerRadius="6" Padding="8" Margin="0,3">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                                <TextBlock Text="Key" Style="{StaticResource MutedText}" />
-                                                <TextBox Text="{Binding Key, UpdateSourceTrigger=PropertyChanged}" />
-                                            </StackPanel>
-                                            <StackPanel Grid.Column="1" Margin="0,0,8,0">
-                                                <TextBlock Text="Display name" Style="{StaticResource MutedText}" />
-                                                <TextBox Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}" />
-                                            </StackPanel>
-                                            <StackPanel Grid.Column="2" Margin="0,0,8,0" VerticalAlignment="Bottom">
-                                                <TextBlock Text="Type" Style="{StaticResource MutedText}" />
-                                                <ComboBox ItemsSource="{Binding DataContext.PlaceholderTypes, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                          SelectedItem="{Binding Type, Mode=TwoWay}"
-                                                          MinWidth="120" />
-                                            </StackPanel>
-                                            <CheckBox Grid.Column="3"
-                                                      Content="Required"
-                                                      VerticalAlignment="Bottom"
-                                                      IsChecked="{Binding IsRequired}"
-                                                      Margin="0,0,8,6" />
-                                            <Button Grid.Column="4" Content="🗑"
-                                                    Style="{StaticResource OutlineButton}"
-                                                    VerticalAlignment="Bottom"
-                                                    Command="{Binding DataContext.RemovePlaceholderCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}" />
+                                            <TextBlock Grid.Column="0"
+                                                       FontFamily="Cascadia Mono, Consolas"
+                                                       Margin="0,0,12,0">
+                                                <Run Text="{}{{ " Foreground="#818C99" />
+                                                <Run Text="{Binding Key, Mode=OneWay}" />
+                                                <Run Text=" }}" Foreground="#818C99" />
+                                            </TextBlock>
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding DisplayName, Mode=OneWay}"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="2"
+                                                       Text="{Binding Type, Mode=OneWay}"
+                                                       Style="{StaticResource MutedText}"
+                                                       VerticalAlignment="Center" />
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <Button Content="+ Add placeholder"
-                                Style="{StaticResource OutlineButton}"
-                                HorizontalAlignment="Left"
-                                Margin="0,4,0,0"
-                                Command="{Binding AddPlaceholderCommand}" />
+                        <TextBlock Style="{StaticResource MutedText}" Margin="0,4,0,0"
+                                   Text="No placeholders referenced yet. Type {{ my_key }} in the Body to add one."
+                                   Visibility="{Binding UsedPlaceholders.Count, Converter={x:Static vm:ZeroToVisibilityConverter.Instance}}" />
 
                         <Button Content="🗑 Delete template"
                                 Style="{StaticResource OutlineButton}"

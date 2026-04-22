@@ -10,19 +10,22 @@
   } from '../lib/render';
   import {
     PlaceholderType,
+    type PlaceholderDefinition,
     type PostDraft,
     type PostTemplate,
     type TargetGroup,
   } from '../lib/types';
 
   // ---- Live data -----------------------------------------------------------
-  const draftsQuery = liveQuery(() => db.drafts.orderBy('updatedAt').reverse().toArray());
-  const groupsQuery = liveQuery(() => db.groups.orderBy('displayName').toArray());
+  const draftsQuery    = liveQuery(() => db.drafts.orderBy('updatedAt').reverse().toArray());
+  const groupsQuery    = liveQuery(() => db.groups.orderBy('displayName').toArray());
   const templatesQuery = liveQuery(() => db.templates.toArray());
+  const libraryQuery   = liveQuery(() => db.placeholders.toArray());
 
-  let drafts = $state<PostDraft[] | undefined>(undefined);
-  let groups = $state<TargetGroup[]>([]);
+  let drafts    = $state<PostDraft[] | undefined>(undefined);
+  let groups    = $state<TargetGroup[]>([]);
   let templates = $state<PostTemplate[]>([]);
+  let library   = $state<PlaceholderDefinition[]>([]);
 
   $effect(() => {
     const s = draftsQuery.subscribe({ next: (v) => (drafts = v) });
@@ -34,6 +37,10 @@
   });
   $effect(() => {
     const s = templatesQuery.subscribe({ next: (v) => (templates = v) });
+    return () => s.unsubscribe();
+  });
+  $effect(() => {
+    const s = libraryQuery.subscribe({ next: (v) => (library = v) });
     return () => s.unsubscribe();
   });
 
@@ -87,15 +94,19 @@
     new Map<number, PostTemplate>(templates.filter((t) => t.id != null).map((t) => [t.id!, t]))
   );
 
+  const libraryByKey = $derived(
+    new Map<string, PlaceholderDefinition>(library.map((d) => [d.key, d]))
+  );
+
   const selectedGroups = $derived(
     draft ? groups.filter((g) => draft!.targetGroupIds.includes(g.id!)) : []
   );
 
-  const placeholders = $derived(unionedPlaceholders(selectedGroups, templatesById));
-
-  const ready = $derived(
-    draft ? isDraftReady(draft, selectedGroups, templatesById) : false
+  const placeholders = $derived(
+    unionedPlaceholders(selectedGroups, templatesById, libraryByKey)
   );
+
+  const ready = $derived(draft ? isDraftReady(draft, selectedGroups) : false);
 
   // Per-group rendered output, re-computed whenever relevant state changes.
   const renders = $derived.by(() => {
@@ -104,7 +115,7 @@
       const tpl = g.postTemplateId != null ? templatesById.get(g.postTemplateId) : undefined;
       if (!tpl) return { group: g, text: '[This group has no template assigned.]' };
       try {
-        return { group: g, text: renderDraftForGroup(draft!, g, tpl) };
+        return { group: g, text: renderDraftForGroup(draft!, g, tpl, libraryByKey) };
       } catch (err) {
         return { group: g, text: `[Render error: ${(err as Error).message}]` };
       }
@@ -304,39 +315,38 @@
             <span class="muted">union across selected groups' templates</span>
           </div>
           <div class="stack-lg">
-            {#each placeholders as u (u.definition.key)}
+            {#each placeholders as u (u.key)}
               {@const def = u.definition}
               <div class="stack">
                 <label>
-                  {def.displayName}
-                  {#if def.isRequired}<span class="danger">&nbsp;*</span>{/if}
-                  <span class="muted">&nbsp;({typeLabel(def.type)})</span>
+                  {def?.displayName ?? u.key}
+                  <span class="muted">&nbsp;({typeLabel(def?.type ?? PlaceholderType.Text)})</span>
                 </label>
 
-                {#if def.type === PlaceholderType.WikiLink}
+                {#if def?.type === PlaceholderType.WikiLink}
                   <div class="row" style="gap: 0.5rem;">
                     <div class="stack grow">
                       <span class="muted">target (e.g. nelfias, club123)</span>
                       <input
                         type="text"
-                        value={wikiTarget(def.key)}
-                        oninput={(e) => setWiki(def.key, 'target', (e.target as HTMLInputElement).value)}
+                        value={wikiTarget(u.key)}
+                        oninput={(e) => setWiki(u.key, 'target', (e.target as HTMLInputElement).value)}
                       />
                     </div>
                     <div class="stack grow">
                       <span class="muted">displayed text</span>
                       <input
                         type="text"
-                        value={wikiDisplay(def.key)}
-                        oninput={(e) => setWiki(def.key, 'display', (e.target as HTMLInputElement).value)}
+                        value={wikiDisplay(u.key)}
+                        oninput={(e) => setWiki(u.key, 'display', (e.target as HTMLInputElement).value)}
                       />
                     </div>
                   </div>
                 {:else}
                   <input
                     type="text"
-                    value={draft.placeholderValues[def.key] ?? ''}
-                    oninput={(e) => setPlain(def.key, (e.target as HTMLInputElement).value)}
+                    value={draft.placeholderValues[u.key] ?? ''}
+                    oninput={(e) => setPlain(u.key, (e.target as HTMLInputElement).value)}
                   />
                 {/if}
 

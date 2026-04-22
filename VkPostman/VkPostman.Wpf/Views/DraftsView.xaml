@@ -128,9 +128,7 @@
                                 <DataTemplate>
                                     <StackPanel Margin="0,6,0,0">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
-                                            <TextBlock Text=" *" Foreground="#E64646"
-                                                       Visibility="{Binding IsRequired, Converter={x:Static vm:BoolToVisibilityConverter.Instance}}" />
+                                            <TextBlock Text="{Binding DisplayName, Mode=OneWay}" FontWeight="SemiBold" />
                                             <TextBlock Text="  (" Margin="6,0,0,0" Style="{StaticResource MutedText}" />
                                             <TextBlock Text="{Binding TypeLabel, Mode=OneWay}" Style="{StaticResource MutedText}" />
                                             <TextBlock Text=")" Style="{StaticResource MutedText}" />

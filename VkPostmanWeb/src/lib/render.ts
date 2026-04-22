@@ -8,9 +8,7 @@ import {
 } from './types';
 
 // ---------------------------------------------------------------------------
-// VK link normalizer — ports VkLinkNormalizer from the C# side.
-// Accepts: `nelfias` | `@nelfias` | `vk.com/nelfias` | `https://vk.com/nelfias`
-// Emits:  `@nelfias`   (leading @ included; strip it yourself if unwanted)
+// VK link normalizer (parallels C# VkLinkNormalizer).
 // ---------------------------------------------------------------------------
 
 const VK_HOST_RE = /^(https?:\/\/)?(www\.|m\.)?(vk\.com|vk\.ru)\//i;
@@ -19,15 +17,11 @@ const SHORTNAME_RE = /^[A-Za-z_][A-Za-z0-9_.]{0,63}$/;
 export function normalizeVkLink(input: string | null | undefined): string {
   if (!input) return '';
   let s = input.trim();
-
   const hostMatch = VK_HOST_RE.exec(s);
   if (hostMatch) s = s.slice(hostMatch[0].length);
-
   if (s.startsWith('@')) s = s.slice(1);
-
   const tail = s.search(/[/?#]/);
   if (tail >= 0) s = s.slice(0, tail);
-
   return s ? '@' + s : '';
 }
 
@@ -37,18 +31,14 @@ export function looksLikeVkLink(input: string | null | undefined): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// WikiLink packing — we pack (target, display) into a single string because the
-// draft's placeholderValues is a flat Record<string, string>. Matches C#.
+// WikiLink packing — two fields in one string slot.
 // ---------------------------------------------------------------------------
 
 export function packWikiLink(target: string, display: string): string {
   return `${target ?? ''}${WIKI_LINK_SEPARATOR}${display ?? ''}`;
 }
 
-export function splitWikiLink(packed: string | undefined): {
-  target: string;
-  display: string;
-} {
+export function splitWikiLink(packed: string | undefined): { target: string; display: string } {
   if (!packed) return { target: '', display: '' };
   const idx = packed.indexOf(WIKI_LINK_SEPARATOR);
   if (idx < 0) return { target: packed, display: '' };
@@ -71,19 +61,12 @@ function normalizeTagList(value: string): string {
     .join(' ');
 }
 
-// ---------------------------------------------------------------------------
-// Per-type rendering of a placeholder's raw string into its output string.
-// ---------------------------------------------------------------------------
-
 export function renderPlaceholder(def: PlaceholderDefinition, value: string | undefined): string {
   if (!value || !value.trim()) return def.defaultValue ?? '';
   switch (def.type) {
-    case PlaceholderType.VkLink:
-      return normalizeVkLink(value);
-    case PlaceholderType.WikiLink:
-      return renderWikiLink(value);
-    case PlaceholderType.TagList:
-      return normalizeTagList(value);
+    case PlaceholderType.VkLink:   return normalizeVkLink(value);
+    case PlaceholderType.WikiLink: return renderWikiLink(value);
+    case PlaceholderType.TagList:  return normalizeTagList(value);
     case PlaceholderType.Text:
     case PlaceholderType.Url:
     default:
@@ -92,17 +75,9 @@ export function renderPlaceholder(def: PlaceholderDefinition, value: string | un
 }
 
 // ---------------------------------------------------------------------------
-// Template engine — minimalist Scriban-compatible `{{ name }}` substitution.
-// No loops or conditionals; our templates don't use them.
+// Built-in placeholders (set by the renderer; never live in the library).
 // ---------------------------------------------------------------------------
 
-const EXPR_RE = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
-
-/**
- * Placeholder keys the renderer injects automatically for every group.
- * These should never auto-appear in a template's PlaceholderSchema because
- * they come from the draft / group, not from user-fillable inputs.
- */
 export const BUILT_IN_PLACEHOLDERS = [
   'common_text',
   'group_tags',
@@ -116,16 +91,10 @@ export function isBuiltInPlaceholder(key: string): boolean {
   return (BUILT_IN_PLACEHOLDERS as readonly string[]).includes(key);
 }
 
-/**
- * Returns the unique set of placeholder keys referenced in a template body,
- * in first-appearance order. Used by the editor to auto-add schema entries
- * for keys the user has typed into the Body field.
- */
 export function extractPlaceholderKeys(body: string): string[] {
   if (!body) return [];
   const seen = new Set<string>();
   const result: string[] = [];
-  // A fresh regex per call because EXPR_RE has the /g flag and carries state.
   const re = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(body)) !== null) {
@@ -137,6 +106,16 @@ export function extractPlaceholderKeys(body: string): string[] {
   }
   return result;
 }
+
+export function extractLibraryPlaceholderKeys(body: string): string[] {
+  return extractPlaceholderKeys(body).filter((k) => !isBuiltInPlaceholder(k));
+}
+
+// ---------------------------------------------------------------------------
+// Template engine — minimalist `{{ name }}` substitution.
+// ---------------------------------------------------------------------------
+
+const EXPR_RE = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
 
 export function renderTemplate(body: string, ctx: Record<string, string>): string {
   return body.replace(EXPR_RE, (_, key: string) => (ctx[key] ?? ''));
@@ -151,37 +130,39 @@ const hashify = (t: string) => (t.startsWith('#') ? t : `#${t}`);
 export function renderDraftForGroup(
   draft: PostDraft,
   group: TargetGroup,
-  template: PostTemplate
+  template: PostTemplate,
+  library: Map<string, PlaceholderDefinition>,
 ): string {
-  const placeholderOutputs: Record<string, string> = {};
-  for (const def of template.placeholderSchema) {
-    placeholderOutputs[def.key] = renderPlaceholder(def, draft.placeholderValues[def.key]);
-  }
-
   const ctx: Record<string, string> = {
-    ...placeholderOutputs,
     group_name: group.displayName,
     group_tags: (group.mandatoryTags ?? []).map(hashify).join(' '),
     theme_tags: (draft.themeTags ?? []).map(hashify).join(' '),
     common_text: draft.commonText ?? '',
   };
 
+  for (const key of extractLibraryPlaceholderKeys(template.bodyTemplate)) {
+    const rawValue = draft.placeholderValues[key] ?? '';
+    const def = library.get(key);
+    ctx[key] = def ? renderPlaceholder(def, rawValue) : rawValue;
+  }
+
   return renderTemplate(template.bodyTemplate, ctx);
 }
 
 // ---------------------------------------------------------------------------
-// Union of placeholder definitions across the selected groups' templates.
-// Stricter required-ness wins when two templates disagree on the same key.
+// Union of placeholder keys across the selected groups' templates.
 // ---------------------------------------------------------------------------
 
 export interface PlaceholderUsage {
-  definition: PlaceholderDefinition;
+  key: string;
+  definition: PlaceholderDefinition | undefined;
   usedByGroups: string[];
 }
 
 export function unionedPlaceholders(
   groups: TargetGroup[],
-  templatesById: Map<number, PostTemplate>
+  templatesById: Map<number, PostTemplate>,
+  library: Map<string, PlaceholderDefinition>,
 ): PlaceholderUsage[] {
   const byKey = new Map<string, PlaceholderUsage>();
 
@@ -190,44 +171,30 @@ export function unionedPlaceholders(
     const tpl = templatesById.get(g.postTemplateId);
     if (!tpl) continue;
 
-    for (const def of tpl.placeholderSchema) {
-      const existing = byKey.get(def.key);
+    for (const key of extractLibraryPlaceholderKeys(tpl.bodyTemplate)) {
+      const existing = byKey.get(key);
       if (!existing) {
-        byKey.set(def.key, { definition: { ...def }, usedByGroups: [g.displayName] });
-        continue;
+        byKey.set(key, {
+          key,
+          definition: library.get(key),
+          usedByGroups: [g.displayName],
+        });
+      } else {
+        existing.usedByGroups.push(g.displayName);
       }
-      // Stricter required-ness wins.
-      if (def.isRequired && !existing.definition.isRequired) {
-        existing.definition.isRequired = true;
-      }
-      existing.usedByGroups.push(g.displayName);
     }
   }
 
   return [...byKey.values()].sort((a, b) =>
-    a.definition.displayName.localeCompare(b.definition.displayName)
+    (a.definition?.displayName ?? a.key).localeCompare(b.definition?.displayName ?? b.key),
   );
 }
 
 export function isDraftReady(
-  draft: PostDraft,
+  _draft: PostDraft,
   selectedGroups: TargetGroup[],
-  templatesById: Map<number, PostTemplate>
 ): boolean {
   if (selectedGroups.length === 0) return false;
   if (selectedGroups.some((g) => g.postTemplateId == null)) return false;
-
-  const required = new Set<string>();
-  for (const g of selectedGroups) {
-    const tpl = templatesById.get(g.postTemplateId!);
-    if (!tpl) return false;
-    for (const def of tpl.placeholderSchema) {
-      if (def.isRequired) required.add(def.key);
-    }
-  }
-  for (const key of required) {
-    const v = draft.placeholderValues[key];
-    if (!v || !v.trim()) return false;
-  }
   return true;
 }

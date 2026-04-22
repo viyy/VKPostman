@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using VkPostman.Core.Models;
@@ -9,16 +10,16 @@ namespace VkPostman.Wpf.Services;
 
 /// <summary>
 /// JSON import/export for interchange with the PWA build. The shape must
-/// stay byte-compatible with VkPostmanWeb/src/lib/exchange.ts — if you
-/// change one side, change the other.
+/// stay byte-compatible with VkPostmanWeb/src/lib/exchange.ts.
 ///
-/// Import replaces ALL existing data and remaps IDs so cross-references
-/// (group→template, draft→groups) stay consistent regardless of what
-/// IDs the source database happened to use.
+/// Format v2 (current) adds a top-level <c>placeholders</c> array for the
+/// shared library. Importer also accepts v1 files (no placeholders array,
+/// templates carry inline <c>placeholderSchema</c>) by upserting those
+/// inline definitions into the library during import.
 /// </summary>
 public class ExchangeService
 {
-    public const int FormatVersion = 1;
+    public const int FormatVersion = 2;
 
     private static readonly JsonSerializerOptions _json = new()
     {
@@ -43,15 +44,17 @@ public class ExchangeService
 
     public async Task<ExportFile> BuildExportAsync(CancellationToken ct = default)
     {
-        var templates = await _db.PostTemplates.AsNoTracking().ToListAsync(ct);
-        var groups    = await _db.TargetGroups.AsNoTracking().ToListAsync(ct);
-        var drafts    = await _db.PostDrafts.AsNoTracking().ToListAsync(ct);
+        var placeholders = await _db.PlaceholderDefinitions.AsNoTracking().ToListAsync(ct);
+        var templates    = await _db.PostTemplates.AsNoTracking().ToListAsync(ct);
+        var groups       = await _db.TargetGroups.AsNoTracking().ToListAsync(ct);
+        var drafts       = await _db.PostDrafts.AsNoTracking().ToListAsync(ct);
 
         return new ExportFile
         {
             FormatVersion = FormatVersion,
             ExportedAt    = DateTime.UtcNow,
             App           = "vk-postman",
+            Placeholders  = placeholders,
             Templates     = templates,
             Groups        = groups,
             Drafts        = drafts,
@@ -60,27 +63,101 @@ public class ExchangeService
 
     public async Task<ImportSummary> ImportFromFileAsync(string path, CancellationToken ct = default)
     {
-        ExportFile? payload;
+        // Parse into a JsonDocument first so we can detect and up-convert v1
+        // files (which carried placeholder definitions inline inside each
+        // template) before binding to the current POCO shape.
+        JsonNode? root;
         await using (var fs = File.OpenRead(path))
         {
-            payload = await JsonSerializer.DeserializeAsync<ExportFile>(fs, _json, ct);
+            root = await JsonNode.ParseAsync(fs, cancellationToken: ct);
         }
-        if (payload is null) throw new InvalidDataException("Empty or unparseable export file.");
-        if (payload.App != "vk-postman")
-            throw new InvalidDataException($"Not a VK Postman export (app = {payload.App ?? "null"}).");
-        if (payload.FormatVersion is < 1 or > FormatVersion)
+        if (root is not JsonObject obj)
+            throw new InvalidDataException("Empty or unparseable export file.");
+
+        var app = obj["app"]?.GetValue<string>();
+        if (app != "vk-postman")
+            throw new InvalidDataException($"Not a VK Postman export (app = {app ?? "null"}).");
+
+        var formatVersion = obj["formatVersion"]?.GetValue<int>() ?? 0;
+        if (formatVersion is < 1 or > FormatVersion)
             throw new InvalidDataException(
-                $"Unsupported formatVersion {payload.FormatVersion}. This build understands up to {FormatVersion}.");
+                $"Unsupported formatVersion {formatVersion}. This build understands 1..{FormatVersion}.");
+
+        if (formatVersion == 1)
+            MigrateV1ToV2(obj);
+
+        var payload = obj.Deserialize<ExportFile>(_json)
+            ?? throw new InvalidDataException("Could not bind payload to ExportFile.");
 
         return await ApplyImportAsync(payload, ct);
     }
 
+    /// <summary>
+    /// Flattens a v1 payload into v2 shape in place: collect every unique
+    /// <c>templates[].placeholderSchema[]</c> entry into a new top-level
+    /// <c>placeholders</c> array (first-write-wins on key conflicts), then
+    /// strip the inline schema from each template.
+    /// </summary>
+    private static void MigrateV1ToV2(JsonObject root)
+    {
+        var library = new JsonArray();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        int idCounter = 1;
+
+        if (root["templates"] is JsonArray templates)
+        {
+            foreach (var tNode in templates.OfType<JsonObject>())
+            {
+                if (tNode["placeholderSchema"] is JsonArray schema)
+                {
+                    foreach (var defNode in schema.OfType<JsonObject>())
+                    {
+                        var key = defNode["key"]?.GetValue<string>();
+                        if (string.IsNullOrWhiteSpace(key) || !seen.Add(key)) continue;
+                        var def = new JsonObject
+                        {
+                            ["id"]           = idCounter++,
+                            ["key"]          = key,
+                            ["displayName"]  = defNode["displayName"]?.DeepClone() ?? JsonValue.Create(key),
+                            ["type"]         = defNode["type"]?.DeepClone() ?? JsonValue.Create(0),
+                            ["description"]  = defNode["description"]?.DeepClone(),
+                            ["defaultValue"] = defNode["defaultValue"]?.DeepClone(),
+                        };
+                        library.Add(def);
+                    }
+                    tNode.Remove("placeholderSchema");
+                }
+            }
+        }
+
+        root["placeholders"] = library;
+        root["formatVersion"] = 2;
+    }
+
     private async Task<ImportSummary> ApplyImportAsync(ExportFile payload, CancellationToken ct)
     {
-        // Wipe the three tables, then insert fresh rows with remapped IDs.
+        // Wipe the four tables, then insert fresh rows with remapped IDs.
         _db.PostDrafts.RemoveRange(_db.PostDrafts);
         _db.TargetGroups.RemoveRange(_db.TargetGroups);
         _db.PostTemplates.RemoveRange(_db.PostTemplates);
+        _db.PlaceholderDefinitions.RemoveRange(_db.PlaceholderDefinitions);
+        await _db.SaveChangesAsync(ct);
+
+        // --- placeholder library ---
+        foreach (var raw in payload.Placeholders ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(raw.Key)) continue;
+            _db.PlaceholderDefinitions.Add(new PlaceholderDefinition
+            {
+                Key          = raw.Key!,
+                DisplayName  = raw.DisplayName ?? raw.Key!,
+                Type         = raw.Type,
+                Description  = raw.Description,
+                DefaultValue = raw.DefaultValue,
+                CreatedAt    = raw.CreatedAt == default ? DateTime.UtcNow : raw.CreatedAt,
+                UpdatedAt    = raw.UpdatedAt == default ? DateTime.UtcNow : raw.UpdatedAt,
+            });
+        }
         await _db.SaveChangesAsync(ct);
 
         // --- templates: id remap ---
@@ -90,13 +167,12 @@ public class ExchangeService
             var oldId = raw.Id;
             var entity = new PostTemplate
             {
-                Name              = raw.Name ?? string.Empty,
-                Description       = raw.Description ?? string.Empty,
-                BodyTemplate      = raw.BodyTemplate ?? string.Empty,
-                DefaultThemeTags  = raw.DefaultThemeTags ?? [],
-                PlaceholderSchema = raw.PlaceholderSchema ?? [],
-                CreatedAt         = raw.CreatedAt == default ? DateTime.UtcNow : raw.CreatedAt,
-                UpdatedAt         = raw.UpdatedAt == default ? DateTime.UtcNow : raw.UpdatedAt,
+                Name             = raw.Name ?? string.Empty,
+                Description      = raw.Description ?? string.Empty,
+                BodyTemplate     = raw.BodyTemplate ?? string.Empty,
+                DefaultThemeTags = raw.DefaultThemeTags ?? [],
+                CreatedAt        = raw.CreatedAt == default ? DateTime.UtcNow : raw.CreatedAt,
+                UpdatedAt        = raw.UpdatedAt == default ? DateTime.UtcNow : raw.UpdatedAt,
             };
             _db.PostTemplates.Add(entity);
             await _db.SaveChangesAsync(ct);
@@ -152,9 +228,10 @@ public class ExchangeService
         await _db.SaveChangesAsync(ct);
 
         return new ImportSummary(
-            payload.Templates?.Count ?? 0,
-            payload.Groups?.Count    ?? 0,
-            payload.Drafts?.Count    ?? 0);
+            payload.Placeholders?.Count ?? 0,
+            payload.Templates?.Count    ?? 0,
+            payload.Groups?.Count       ?? 0,
+            payload.Drafts?.Count       ?? 0);
     }
 
     public sealed class ExportFile
@@ -162,10 +239,11 @@ public class ExchangeService
         public int FormatVersion { get; set; }
         public DateTime ExportedAt { get; set; }
         public string? App { get; set; }
+        public List<PlaceholderDefinition>? Placeholders { get; set; }
         public List<PostTemplate>? Templates { get; set; }
         public List<TargetGroup>? Groups { get; set; }
         public List<PostDraft>? Drafts { get; set; }
     }
 
-    public sealed record ImportSummary(int Templates, int Groups, int Drafts);
+    public sealed record ImportSummary(int Placeholders, int Templates, int Groups, int Drafts);
 }
