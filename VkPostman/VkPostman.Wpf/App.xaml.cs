@@ -53,12 +53,14 @@ public partial class App : Application
                 services.AddScoped<DraftService>();
                 services.AddScoped<GroupService>();
                 services.AddScoped<TemplateService>();
+                services.AddScoped<PlaceholderService>();
                 services.AddScoped<ExchangeService>();
 
                 services.AddTransient<MainViewModel>();
                 services.AddTransient<DraftsViewModel>();
                 services.AddTransient<GroupsViewModel>();
                 services.AddTransient<TemplatesViewModel>();
+                services.AddTransient<PlaceholdersViewModel>();
 
                 services.AddTransient<MainWindow>();
             })
@@ -68,22 +70,14 @@ public partial class App : Application
             })
             .Build();
 
-        // First run: create tables. On schema mismatch (older DB on disk), wipe + recreate.
+        // Ensure the current schema exists on disk. New DB → EnsureCreated writes
+        // the model as-is. Existing DB → EnsureCreated is a no-op, and
+        // SchemaMigration upgrades the shape in-place while preserving data.
         using (var scope = _host.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<VkPostmanDbContext>();
             db.Database.EnsureCreated();
-            try
-            {
-                // Smoke-test the current schema.
-                _ = db.TargetGroups.Select(g => new { g.Id, g.PostTemplateId }).Take(0).ToList();
-                _ = db.PostDrafts.Select(d => new { d.Id, d.CommonText }).Take(0).ToList();
-            }
-            catch
-            {
-                db.Database.EnsureDeleted();
-                db.Database.EnsureCreated();
-            }
+            await SchemaMigration.MigrateAsync(db);
         }
 
         await _host.StartAsync();

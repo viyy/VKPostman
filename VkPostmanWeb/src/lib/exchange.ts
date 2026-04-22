@@ -1,44 +1,48 @@
 // ---------------------------------------------------------------------------
 // JSON export / import for interchange between the desktop (WPF) build and
-// this PWA. File shape:
+// this PWA. File shape (v2):
 //
 //   {
-//     "formatVersion": 1,
+//     "formatVersion": 2,
 //     "exportedAt": "2026-04-17T12:34:56.000Z",
 //     "app": "vk-postman",
-//     "templates": [ ... ],
-//     "groups":    [ ... ],
-//     "drafts":    [ ... ]
+//     "placeholders": [ ... ],
+//     "templates":    [ ... ],
+//     "groups":       [ ... ],
+//     "drafts":       [ ... ]
 //   }
 //
-// Import strategy: REPLACE. We wipe the three tables and re-insert the
-// payload, **remapping IDs**: old ids from the file get fresh ids assigned
-// locally, and cross-references (group.postTemplateId, draft.targetGroupIds)
-// are rewritten to the new ids. This means every import is self-consistent
-// regardless of which ids the source database happened to use.
+// Import strategy: REPLACE. Clear all four tables, re-insert with **remapped
+// IDs** so cross-references (group.postTemplateId, draft.targetGroupIds) stay
+// consistent regardless of source IDs. Backward-compat: v1 files had no
+// placeholders array and inline per-template `placeholderSchema` — we flatten
+// those into the new library on the way in.
 // ---------------------------------------------------------------------------
 
 import { db } from './db';
-import type {
-  PlaceholderDefinition,
-  PostDraft,
-  PostTemplate,
-  TargetGroup,
+import {
+  PlaceholderType,
+  type PlaceholderDefinition,
+  type PostDraft,
+  type PostTemplate,
+  type TargetGroup,
 } from './types';
 
-export const FORMAT_VERSION = 1;
+export const FORMAT_VERSION = 2;
 
 export interface ExportFile {
   formatVersion: number;
   exportedAt: string;
   app: 'vk-postman';
+  placeholders: PlaceholderDefinition[];
   templates: PostTemplate[];
   groups: TargetGroup[];
   drafts: PostDraft[];
 }
 
 export async function exportAll(): Promise<ExportFile> {
-  const [templates, groups, drafts] = await Promise.all([
+  const [placeholders, templates, groups, drafts] = await Promise.all([
+    db.placeholders.toArray(),
     db.templates.toArray(),
     db.groups.toArray(),
     db.drafts.toArray(),
@@ -47,6 +51,7 @@ export async function exportAll(): Promise<ExportFile> {
     formatVersion: FORMAT_VERSION,
     exportedAt: new Date().toISOString(),
     app: 'vk-postman',
+    placeholders,
     templates,
     groups,
     drafts,
@@ -54,11 +59,9 @@ export async function exportAll(): Promise<ExportFile> {
 }
 
 export function toJsonBlob(data: ExportFile): Blob {
-  // Pretty-printed with 2-space indent so humans can diff / hand-edit.
   return new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
 }
 
-/** Kicks off a browser download of the export file. */
 export function downloadExport(data: ExportFile, filename?: string): void {
   const blob = toJsonBlob(data);
   const url = URL.createObjectURL(blob);
@@ -69,20 +72,16 @@ export function downloadExport(data: ExportFile, filename?: string): void {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  // Give the browser a tick to consume the URL before we revoke it.
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export interface ImportSummary {
+  placeholders: number;
   templates: number;
   groups: number;
   drafts: number;
 }
 
-/**
- * Read a JSON file (from <input type="file">), validate the shape,
- * REPLACE everything in the DB with its contents, remapping IDs.
- */
 export async function importFromFile(file: File): Promise<ImportSummary> {
   const text = await file.text();
   let parsed: unknown;
@@ -94,71 +93,84 @@ export async function importFromFile(file: File): Promise<ImportSummary> {
   return importFromJson(parsed);
 }
 
-/** Exposed so the WPF/PWA tests can pass an already-parsed object. */
 export async function importFromJson(parsed: unknown): Promise<ImportSummary> {
   const payload = assertExportFile(parsed);
 
-  // Run as one Dexie transaction: partial imports are worse than none.
-  return db.transaction('rw', [db.templates, db.groups, db.drafts], async () => {
-    await Promise.all([
-      db.templates.clear(),
-      db.groups.clear(),
-      db.drafts.clear(),
-    ]);
+  return db.transaction(
+    'rw',
+    [db.templates, db.groups, db.drafts, db.placeholders],
+    async () => {
+      await Promise.all([
+        db.templates.clear(),
+        db.groups.clear(),
+        db.drafts.clear(),
+        db.placeholders.clear(),
+      ]);
 
-    // --- templates ---
-    const templateIdMap = new Map<number, number>();
-    for (const t of payload.templates) {
-      const oldId = t.id;
-      const { id: _omit, ...rest } = t as PostTemplate & { id?: number };
-      const newId = await db.templates.add({
-        ...rest,
-        createdAt: coerceDate(rest.createdAt),
-        updatedAt: coerceDate(rest.updatedAt),
-      } as PostTemplate);
-      if (oldId != null) templateIdMap.set(oldId, newId);
-    }
+      // --- placeholders ---
+      for (const p of payload.placeholders) {
+        const { id: _omit, ...rest } = p as PlaceholderDefinition & { id?: number };
+        await db.placeholders.add({
+          ...rest,
+          createdAt: coerceDate(rest.createdAt),
+          updatedAt: coerceDate(rest.updatedAt),
+        } as PlaceholderDefinition);
+      }
 
-    // --- groups ---
-    const groupIdMap = new Map<number, number>();
-    for (const g of payload.groups) {
-      const oldId = g.id;
-      const { id: _omit, ...rest } = g as TargetGroup & { id?: number };
-      const remappedTemplateId =
-        rest.postTemplateId != null ? templateIdMap.get(rest.postTemplateId) : undefined;
-      const newId = await db.groups.add({
-        ...rest,
-        postTemplateId: remappedTemplateId,
-        createdAt: coerceDate(rest.createdAt),
-      } as TargetGroup);
-      if (oldId != null) groupIdMap.set(oldId, newId);
-    }
+      // --- templates ---
+      const templateIdMap = new Map<number, number>();
+      for (const t of payload.templates) {
+        const oldId = t.id;
+        const { id: _omit, ...rest } = t as PostTemplate & { id?: number };
+        const newId = await db.templates.add({
+          ...rest,
+          createdAt: coerceDate(rest.createdAt),
+          updatedAt: coerceDate(rest.updatedAt),
+        } as PostTemplate);
+        if (oldId != null) templateIdMap.set(oldId, newId);
+      }
 
-    // --- drafts ---
-    for (const d of payload.drafts) {
-      const { id: _omit, ...rest } = d as PostDraft & { id?: number };
-      const remappedTargets = (rest.targetGroupIds ?? [])
-        .map((oid) => groupIdMap.get(oid))
-        .filter((v): v is number => v != null);
-      await db.drafts.add({
-        ...rest,
-        targetGroupIds: remappedTargets,
-        createdAt: coerceDate(rest.createdAt),
-        updatedAt: coerceDate(rest.updatedAt),
-      } as PostDraft);
-    }
+      // --- groups ---
+      const groupIdMap = new Map<number, number>();
+      for (const g of payload.groups) {
+        const oldId = g.id;
+        const { id: _omit, ...rest } = g as TargetGroup & { id?: number };
+        const remappedTemplateId =
+          rest.postTemplateId != null ? templateIdMap.get(rest.postTemplateId) : undefined;
+        const newId = await db.groups.add({
+          ...rest,
+          postTemplateId: remappedTemplateId,
+          createdAt: coerceDate(rest.createdAt),
+        } as TargetGroup);
+        if (oldId != null) groupIdMap.set(oldId, newId);
+      }
 
-    return {
-      templates: payload.templates.length,
-      groups: payload.groups.length,
-      drafts: payload.drafts.length,
-    };
-  });
+      // --- drafts ---
+      for (const d of payload.drafts) {
+        const { id: _omit, ...rest } = d as PostDraft & { id?: number };
+        const remappedTargets = (rest.targetGroupIds ?? [])
+          .map((oid) => groupIdMap.get(oid))
+          .filter((v): v is number => v != null);
+        await db.drafts.add({
+          ...rest,
+          targetGroupIds: remappedTargets,
+          createdAt: coerceDate(rest.createdAt),
+          updatedAt: coerceDate(rest.updatedAt),
+        } as PostDraft);
+      }
+
+      return {
+        placeholders: payload.placeholders.length,
+        templates: payload.templates.length,
+        groups: payload.groups.length,
+        drafts: payload.drafts.length,
+      };
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
-// Shape validation — the JSON can be hand-edited or come from the desktop
-// build, so we check the shape defensively rather than casting blindly.
+// Shape validation + v1 → v2 migration
 // ---------------------------------------------------------------------------
 
 function assertExportFile(raw: unknown): ExportFile {
@@ -172,25 +184,75 @@ function assertExportFile(raw: unknown): ExportFile {
   const version = Number(r.formatVersion ?? 0);
   if (!Number.isFinite(version) || version < 1 || version > FORMAT_VERSION) {
     throw new Error(
-      `Unsupported formatVersion ${r.formatVersion}. This build understands up to ${FORMAT_VERSION}.`
+      `Unsupported formatVersion ${r.formatVersion}. This build understands 1..${FORMAT_VERSION}.`,
     );
   }
-  const templates = assertArray<PostTemplate>(r.templates, 'templates', assertTemplate);
-  const groups = assertArray<TargetGroup>(r.groups, 'groups', assertGroup);
-  const drafts = assertArray<PostDraft>(r.drafts, 'drafts', assertDraft);
+
+  // v1 → v2 migration: collect every inline placeholderSchema entry into
+  // a top-level placeholders array (first-write-wins on key conflicts).
+  if (version === 1) {
+    upconvertV1(r);
+  }
+
+  const placeholders = assertArray(r.placeholders, 'placeholders', assertPlaceholder);
+  const templates    = assertArray(r.templates,    'templates',    assertTemplate);
+  const groups       = assertArray(r.groups,       'groups',       assertGroup);
+  const drafts       = assertArray(r.drafts,       'drafts',       assertDraft);
+
   return {
     formatVersion: FORMAT_VERSION,
     exportedAt: String(r.exportedAt ?? new Date().toISOString()),
     app: 'vk-postman',
+    placeholders,
     templates,
     groups,
     drafts,
   };
 }
 
+function upconvertV1(raw: Record<string, unknown>): void {
+  const library = new Map<string, Record<string, unknown>>();
+  let id = 1;
+  const tpls = Array.isArray(raw.templates) ? raw.templates : [];
+  for (const t of tpls as Array<Record<string, unknown>>) {
+    const schema = Array.isArray(t.placeholderSchema) ? t.placeholderSchema : [];
+    for (const def of schema as Array<Record<string, unknown>>) {
+      const key = typeof def?.key === 'string' ? def.key : null;
+      if (!key || library.has(key)) continue;
+      library.set(key, {
+        id: id++,
+        key,
+        displayName: typeof def.displayName === 'string' ? def.displayName : key,
+        type: typeof def.type === 'number' ? def.type : 0,
+        description: typeof def.description === 'string' ? def.description : undefined,
+        defaultValue: typeof def.defaultValue === 'string' ? def.defaultValue : undefined,
+      });
+    }
+    delete t.placeholderSchema;
+  }
+  raw.placeholders = [...library.values()];
+  raw.formatVersion = FORMAT_VERSION;
+}
+
 function assertArray<T>(v: unknown, field: string, each: (x: unknown, i: number) => T): T[] {
+  if (v == null) return []; // Tolerate missing optional arrays from older exports.
   if (!Array.isArray(v)) throw new Error(`Field "${field}" must be an array.`);
   return v.map((x, i) => each(x, i));
+}
+
+function assertPlaceholder(x: unknown, i: number): PlaceholderDefinition {
+  if (typeof x !== 'object' || x === null) throw new Error(`placeholders[${i}] is not an object.`);
+  const r = x as Record<string, unknown>;
+  return {
+    id: asOptionalInt(r.id),
+    key: asString(r.key, `placeholders[${i}].key`),
+    displayName: asString(r.displayName, `placeholders[${i}].displayName`),
+    type: coerceType(r.type),
+    description: r.description == null ? undefined : String(r.description),
+    defaultValue: r.defaultValue == null ? undefined : String(r.defaultValue),
+    createdAt: coerceDate(r.createdAt),
+    updatedAt: coerceDate(r.updatedAt),
+  };
 }
 
 function assertTemplate(x: unknown, i: number): PostTemplate {
@@ -202,23 +264,8 @@ function assertTemplate(x: unknown, i: number): PostTemplate {
     description: asStringOrEmpty(r.description),
     bodyTemplate: asString(r.bodyTemplate, `templates[${i}].bodyTemplate`),
     defaultThemeTags: asStringArray(r.defaultThemeTags),
-    placeholderSchema: asArray(r.placeholderSchema).map((p, j) => assertPlaceholder(p, i, j)),
     createdAt: coerceDate(r.createdAt),
     updatedAt: coerceDate(r.updatedAt),
-  };
-}
-
-function assertPlaceholder(x: unknown, i: number, j: number): PlaceholderDefinition {
-  if (typeof x !== 'object' || x === null)
-    throw new Error(`templates[${i}].placeholderSchema[${j}] is not an object.`);
-  const r = x as Record<string, unknown>;
-  return {
-    key: asString(r.key, `templates[${i}].placeholderSchema[${j}].key`),
-    displayName: asString(r.displayName, `templates[${i}].placeholderSchema[${j}].displayName`),
-    isRequired: Boolean(r.isRequired),
-    type: Number(r.type ?? 0),
-    description: r.description == null ? undefined : String(r.description),
-    defaultValue: r.defaultValue == null ? undefined : String(r.defaultValue),
   };
 }
 
@@ -252,7 +299,7 @@ function assertDraft(x: unknown, i: number): PostDraft {
   };
 }
 
-// --- tiny type coercions ----------------------------------------------------
+// ---- tiny coercions --------------------------------------------------------
 
 function asString(v: unknown, label: string): string {
   if (typeof v !== 'string') throw new Error(`${label} must be a string.`);
@@ -285,4 +332,8 @@ function coerceDate(v: unknown): Date {
     if (!Number.isNaN(d.getTime())) return d;
   }
   return new Date();
+}
+function coerceType(v: unknown): PlaceholderType {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? (n as PlaceholderType) : PlaceholderType.Text;
 }

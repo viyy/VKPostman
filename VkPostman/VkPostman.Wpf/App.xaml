@@ -15,6 +15,9 @@
             <DataTemplate DataType="{x:Type vm:TemplatesViewModel}">
                 <v:TemplatesView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:PlaceholdersViewModel}">
+                <v:PlaceholdersView />
+            </DataTemplate>
 
             <!-- ================ Palette ================ -->
             <Color x:Key="VkBlue">#5181B8</Color>

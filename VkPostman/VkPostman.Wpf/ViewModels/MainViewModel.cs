@@ -40,7 +40,8 @@ public partial class MainViewModel : ObservableObject
             var svc = scope.ServiceProvider.GetRequiredService<ExchangeService>();
             var data = await svc.BuildExportAsync();
             await svc.ExportToFileAsync(dlg.FileName);
-            Flash($"Exported {data.Templates?.Count ?? 0} templates, " +
+            Flash($"Exported {data.Placeholders?.Count ?? 0} placeholders, " +
+                  $"{data.Templates?.Count ?? 0} templates, " +
                   $"{data.Groups?.Count ?? 0} groups, {data.Drafts?.Count ?? 0} drafts.", isError: false);
         }
         catch (Exception ex)
@@ -73,8 +74,8 @@ public partial class MainViewModel : ObservableObject
             using var scope = _sp.CreateScope();
             var svc = scope.ServiceProvider.GetRequiredService<ExchangeService>();
             var summary = await svc.ImportFromFileAsync(dlg.FileName);
-            Flash($"Imported {summary.Templates} templates, {summary.Groups} groups, " +
-                  $"{summary.Drafts} drafts. Switch tabs to see the new data.", isError: false);
+            Flash($"Imported {summary.Placeholders} placeholders, {summary.Templates} templates, " +
+                  $"{summary.Groups} groups, {summary.Drafts} drafts. Switch tabs to see the new data.", isError: false);
 
             // Nudge the current view to reload by flipping back to Drafts.
             IsDraftsSelected = false;
@@ -125,6 +126,17 @@ public partial class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _isGroupsSelected, value) && value)
                 CurrentView = _sp.GetRequiredService<GroupsViewModel>();
+        }
+    }
+
+    private bool _isPlaceholdersSelected;
+    public bool IsPlaceholdersSelected
+    {
+        get => _isPlaceholdersSelected;
+        set
+        {
+            if (SetProperty(ref _isPlaceholdersSelected, value) && value)
+                CurrentView = _sp.GetRequiredService<PlaceholdersViewModel>();
         }
     }
 }

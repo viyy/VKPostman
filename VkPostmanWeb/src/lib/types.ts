@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Domain types — kept deliberately parallel to the C# side (Core/Models/*).
-// Not identical: we use plain JS objects + IndexedDB, and WikiLink values are
-// packed as "target\u001Fdisplay" strings for parity with the desktop encoding.
+// PlaceholderDefinition is now a first-class entity in its own store, referenced
+// by key from template bodies. The per-template `placeholderSchema` is gone.
 // ---------------------------------------------------------------------------
 
 export enum PlaceholderType {
@@ -18,12 +18,15 @@ export enum PlaceholderType {
 }
 
 export interface PlaceholderDefinition {
+  id?: number;
+  /** Identifier referenced in a template body as `{{ key }}`. Unique across the library. */
   key: string;
   displayName: string;
-  isRequired: boolean;
   type: PlaceholderType;
   description?: string;
   defaultValue?: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface PostTemplate {
@@ -32,7 +35,6 @@ export interface PostTemplate {
   description: string;
   bodyTemplate: string;
   defaultThemeTags: string[];
-  placeholderSchema: PlaceholderDefinition[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,7 +54,7 @@ export interface PostDraft {
   id?: number;
   title: string;
   commonText: string;
-  /** Union of placeholder values across the selected groups' templates. */
+  /** Keyed by PlaceholderDefinition.key. */
   placeholderValues: Record<string, string>;
   /** Tags common to every selected group; prepended by renderer. */
   themeTags: string[];
