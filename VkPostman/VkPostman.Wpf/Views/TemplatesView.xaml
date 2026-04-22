@@ -81,13 +81,46 @@
 
                         <TextBlock Margin="0,12,0,4">
                             <Run Text="Body" FontWeight="SemiBold" />
-                            <Run Text="— Scriban syntax. Available globals: " />
-                            <Run Text="{}{{ common_text }}, {{ group_tags }}, {{ theme_tags }}, {{ group_name }}" FontFamily="Consolas" />
+                            <Run Text="— Scriban syntax. Placeholders you reference below auto-appear as rows." />
                         </TextBlock>
-                        <TextBox Text="{Binding SelectedTemplate.BodyTemplate, UpdateSourceTrigger=PropertyChanged}"
+                        <TextBox x:Name="BodyTextBox"
+                                 Text="{Binding BodyText, UpdateSourceTrigger=PropertyChanged}"
                                  AcceptsReturn="True" TextWrapping="Wrap"
                                  MinHeight="160" VerticalScrollBarVisibility="Auto"
-                                 FontFamily="Cascadia Mono, Consolas" />
+                                 FontFamily="Cascadia Mono, Consolas"
+                                 SelectionChanged="BodyTextBox_SelectionChanged" />
+
+                        <!-- ===== Chip toolbar — quick-add + autocomplete ===== -->
+                        <ItemsControl ItemsSource="{Binding PlaceholderSuggestions}" Margin="0,6,0,0">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Margin="0,2,4,2"
+                                            Padding="8,2"
+                                            Content="{Binding Display}"
+                                            Command="{Binding DataContext.InsertPlaceholderCommand,
+                                                              RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding Key}"
+                                            ToolTip="{Binding Key}"
+                                            FontFamily="Cascadia Mono, Consolas"
+                                            FontSize="11"
+                                            Background="{Binding IsGlobal,
+                                                Converter={x:Static vm:GlobalChipBackgroundConverter.Instance}}"
+                                            Foreground="{StaticResource VkTextBrush}"
+                                            BorderBrush="{StaticResource VkBorderBrush}"
+                                            BorderThickness="1"
+                                            Cursor="Hand" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Style="{StaticResource MutedText}"
+                                   Margin="0,2,0,0"
+                                   Text="{Binding AutocompleteQuery,
+                                                  Converter={x:Static vm:AutocompleteHintConverter.Instance}}" />
 
                         <TextBlock Text="Default theme tags" Margin="0,12,0,4" />
                         <TextBox Text="{Binding DefaultTagsInput, UpdateSourceTrigger=PropertyChanged}" />

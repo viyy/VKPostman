@@ -3,6 +3,12 @@
   import { db, createTemplate, saveTemplate, deleteTemplate } from '../lib/db';
   import { PlaceholderType, type PlaceholderDefinition, type PostTemplate } from '../lib/types';
   import { createAutosave, type AutosaveStatus } from '../lib/autosave';
+  import {
+    BUILT_IN_PLACEHOLDERS,
+    extractPlaceholderKeys,
+    isBuiltInPlaceholder,
+  } from '../lib/render';
+  import { tick } from 'svelte';
 
   const templatesQuery = liveQuery(() => db.templates.orderBy('updatedAt').reverse().toArray());
 
@@ -33,6 +39,126 @@
       .map((t) => t.replace(/^#+/, '').trim())
       .filter(Boolean);
   });
+
+  // ---------- Placeholder toolbar / autocomplete / auto-sync ----------------
+
+  /** DOM handle for the Body textarea — lets us insert at the cursor. */
+  let bodyTextarea: HTMLTextAreaElement | undefined = $state();
+
+  /** Caret position in the Body textarea, tracked so autocomplete can see it. */
+  let caretPos = $state(0);
+
+  /**
+   * If the caret is inside an OPEN `{{ … ` (no closing `}}` between the last
+   * `{{` and the caret), return the partial key typed so far. Otherwise null.
+   * Drives "filter mode" for the chip toolbar.
+   */
+  const autocompleteQuery = $derived.by<string | null>(() => {
+    if (!editing) return null;
+    const body = editing.bodyTemplate ?? '';
+    const left = body.slice(0, caretPos);
+    const openIdx = left.lastIndexOf('{{');
+    if (openIdx < 0) return null;
+    const betweenOpenAndCaret = left.slice(openIdx + 2);
+    // If the user has already closed the expression, we're not inside it.
+    if (betweenOpenAndCaret.includes('}}')) return null;
+    // Whatever comes after the `{{`, trimmed of leading whitespace, is the query.
+    return betweenOpenAndCaret.replace(/^\s*/, '');
+  });
+
+  /** Chips to show in the toolbar — user-defined first, then globals, filtered by query. */
+  const suggestedKeys = $derived.by<string[]>(() => {
+    if (!editing) return [];
+    const schemaKeys = editing.placeholderSchema.map((p) => p.key).filter(Boolean);
+    const all = [...schemaKeys, ...BUILT_IN_PLACEHOLDERS];
+    const q = autocompleteQuery;
+    if (q == null) return all;
+    const lower = q.toLowerCase();
+    return all.filter((k) => k.toLowerCase().startsWith(lower));
+  });
+
+  /**
+   * Auto-add placeholder rows for any key referenced in the body that isn't in
+   * the schema and isn't a global. Debounced via rAF so we don't churn the
+   * schema on every keystroke. Removals are NOT mirrored — deleting a row is
+   * an explicit user action, not something we'd want to happen from a typo.
+   */
+  let _autoSyncFrame = 0;
+  $effect(() => {
+    if (!editing) return;
+    cancelAnimationFrame(_autoSyncFrame);
+    // Touch the body so the effect re-runs when it changes:
+    const body = editing.bodyTemplate ?? '';
+    _autoSyncFrame = requestAnimationFrame(() => {
+      if (!editing) return;
+      const referenced = extractPlaceholderKeys(body);
+      const existing = new Set(editing.placeholderSchema.map((p) => p.key));
+      let added = false;
+      for (const key of referenced) {
+        if (isBuiltInPlaceholder(key)) continue;
+        if (!existing.has(key)) {
+          editing.placeholderSchema.push({
+            key,
+            displayName: toDisplayName(key),
+            isRequired: false,
+            type: PlaceholderType.Text,
+          });
+          existing.add(key);
+          added = true;
+        }
+      }
+      if (added) {
+        // Reassign to trigger Svelte reactivity.
+        editing.placeholderSchema = editing.placeholderSchema;
+      }
+    });
+  });
+
+  function toDisplayName(key: string): string {
+    const spaced = key.replace(/[_\-]+/g, ' ').trim();
+    return spaced.length === 0 ? key : spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  }
+
+  /**
+   * Inserts `{{ key }}` at the caret. If we're in autocomplete mode (the caret
+   * is inside a partial `{{ foo`), replace the partial with the full token
+   * including the closing `}}` instead of nesting.
+   */
+  async function insertPlaceholderAtCaret(key: string) {
+    if (!editing || !bodyTextarea) return;
+    const body = editing.bodyTemplate ?? '';
+    const start = bodyTextarea.selectionStart ?? body.length;
+    const end = bodyTextarea.selectionEnd ?? start;
+
+    let newBody: string;
+    let newCaret: number;
+
+    if (autocompleteQuery != null) {
+      // Replace from the last `{{` before the caret to the caret with the
+      // complete `{{ key }}` token.
+      const left = body.slice(0, start);
+      const openIdx = left.lastIndexOf('{{');
+      const replaced = `{{ ${key} }}`;
+      newBody = body.slice(0, openIdx) + replaced + body.slice(end);
+      newCaret = openIdx + replaced.length;
+    } else {
+      const token = `{{ ${key} }}`;
+      newBody = body.slice(0, start) + token + body.slice(end);
+      newCaret = start + token.length;
+    }
+
+    editing.bodyTemplate = newBody;
+    await tick();
+    bodyTextarea.focus();
+    bodyTextarea.setSelectionRange(newCaret, newCaret);
+    caretPos = newCaret;
+  }
+
+  /** Keep the tracked caret position fresh so autocompleteQuery is reactive. */
+  function syncCaret() {
+    if (!bodyTextarea) return;
+    caretPos = bodyTextarea.selectionStart ?? 0;
+  }
 
   const autosave = createAutosave<PostTemplate>({
     get: () => editing,
@@ -156,12 +282,44 @@
           <label for="t-body">Body</label>
           <textarea
             id="t-body"
+            bind:this={bodyTextarea}
             style="font-family: 'JetBrains Mono', Consolas, monospace; min-height: 150px;"
             bind:value={editing.bodyTemplate}
+            oninput={syncCaret}
+            onclick={syncCaret}
+            onkeyup={syncCaret}
+            onselect={syncCaret}
           ></textarea>
+
+          <!-- Quick-add toolbar — doubles as a filtered list during autocomplete. -->
+          <div class="placeholder-chiprow">
+            {#if autocompleteQuery != null}
+              <span class="muted" style="font-size: 0.75rem;">
+                Completing <code>{`{{ ${autocompleteQuery}…`}</code>
+              </span>
+            {:else}
+              <span class="muted" style="font-size: 0.75rem;">Insert:</span>
+            {/if}
+            {#each suggestedKeys as key (key)}
+              <button
+                type="button"
+                class="chip {isBuiltInPlaceholder(key) ? 'chip-global' : 'chip-user'}"
+                onclick={() => insertPlaceholderAtCaret(key)}
+                title={isBuiltInPlaceholder(key)
+                  ? 'Built-in global — available in every template'
+                  : 'Defined in this template'}
+              >{`{{ ${key} }}`}</button>
+            {/each}
+            {#if suggestedKeys.length === 0}
+              <span class="muted" style="font-size: 0.78rem;">
+                No matches. Type a name and a placeholder row will be added for you.
+              </span>
+            {/if}
+          </div>
+
           <span class="muted">
-            Scriban-like <code>{'{{ placeholder }}'}</code> syntax. Globals available:
-            <code>common_text</code>, <code>group_tags</code>, <code>theme_tags</code>, <code>group_name</code>.
+            Scriban-like <code>{'{{ placeholder }}'}</code> syntax.
+            Placeholders you reference here auto-appear in the list below.
           </span>
         </div>
         <div class="stack">

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
+using System.Windows.Media;
 
 namespace VkPostman.Wpf.ViewModels;
 
@@ -61,5 +62,46 @@ public sealed class AutosaveStatusLabelConverter : IValueConverter
             Services.AutosaveStatus.Error  => "⚠ Save failed",
             _                              => "",
         } : "";
+    public object ConvertBack(object? v, Type t, object? p, CultureInfo c) => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Picks the chip-background brush for placeholder suggestions — user-defined
+/// keys get the standard surface colour, globals get a muted gray to hint
+/// that they come from the draft/group, not the schema.
+/// </summary>
+public sealed class GlobalChipBackgroundConverter : IValueConverter
+{
+    public static readonly GlobalChipBackgroundConverter Instance = new();
+
+    private static readonly SolidColorBrush _userBrush   = new(Color.FromRgb(0xFF, 0xFF, 0xFF));
+    private static readonly SolidColorBrush _globalBrush = new(Color.FromRgb(0xF4, 0xF5, 0xF7));
+
+    static GlobalChipBackgroundConverter()
+    {
+        _userBrush.Freeze();
+        _globalBrush.Freeze();
+    }
+
+    public object Convert(object? value, Type t, object? p, CultureInfo c) =>
+        (value is true) ? _globalBrush : _userBrush;
+
+    public object ConvertBack(object? v, Type t, object? p, CultureInfo c) => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Turns the VM's AutocompleteQuery (nullable string) into a one-line hint
+/// under the chip toolbar — "Completing {{ foo… }}" when active, empty
+/// otherwise so the chip row is the only thing visible.
+/// </summary>
+public sealed class AutocompleteHintConverter : IValueConverter
+{
+    public static readonly AutocompleteHintConverter Instance = new();
+
+    public object Convert(object? value, Type t, object? p, CultureInfo c) =>
+        value is string s && !string.IsNullOrEmpty(s)
+            ? $"Completing {{{{ {s}…"
+            : string.Empty;
+
     public object ConvertBack(object? v, Type t, object? p, CultureInfo c) => throw new NotSupportedException();
 }

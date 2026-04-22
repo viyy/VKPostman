@@ -420,6 +420,44 @@ label {
   .placeholder-row .cell-remove   { grid-column: 2; justify-self: end; }
 }
 
+/* ===== Placeholder chip toolbar (Templates editor) ===== */
+.placeholder-chiprow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.25rem 0 0.25rem;
+  min-height: 1.8rem;
+}
+
+.chip {
+  appearance: none;
+  border: 1px solid var(--vk-border-strong);
+  background: var(--vk-surface);
+  color: var(--vk-text);
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.78rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  cursor: pointer;
+  line-height: 1.3;
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+.chip:hover {
+  background: var(--vk-accent);
+  border-color: var(--vk-blue);
+  color: var(--vk-blue);
+}
+.chip.chip-global {
+  /* Subtle visual difference so globals don't look like user-added keys. */
+  background: #f4f5f7;
+  color: var(--vk-text-secondary);
+}
+.chip.chip-global:hover {
+  background: var(--vk-accent);
+  color: var(--vk-blue);
+}
+
 /* ===== Mobile helpers ===== */
 @media (max-width: 560px) {
   .content { padding: 0.6rem; }

@@ -24,19 +24,34 @@ public class PostTemplate
     
     public List<string> GetRequiredPlaceholders()
         => PlaceholderSchema.Where(p => p.IsRequired).Select(p => p.Key).ToList();
-    
-    public List<string> ExtractPlaceholders()
+
+    /// <summary>
+    /// Placeholder keys automatically injected by the renderer for every group.
+    /// These must NOT be auto-added to the schema because they're filled from
+    /// the draft / group, not from a user-fillable field in the editor.
+    /// </summary>
+    public static readonly IReadOnlyList<string> BuiltInPlaceholders =
+        new[] { "common_text", "group_tags", "theme_tags", "group_name" };
+
+    public static bool IsBuiltInPlaceholder(string key) =>
+        BuiltInPlaceholders.Contains(key);
+
+    /// <summary>
+    /// Unique set of placeholder keys referenced in <see cref="BodyTemplate"/>,
+    /// in first-appearance order. Used by the template editor to auto-append
+    /// new placeholder rows as the user types <c>{{ name }}</c> into the body.
+    /// </summary>
+    public IEnumerable<string> ExtractPlaceholders()
     {
-        var placeholders = new List<string>();
+        if (string.IsNullOrEmpty(BodyTemplate)) yield break;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         var matches = System.Text.RegularExpressions.Regex.Matches(
-            BodyTemplate, 
-            @"\{([^}]+)\}");
-            
-        foreach (System.Text.RegularExpressions.Match match in matches)
+            BodyTemplate,
+            @"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}");
+        foreach (System.Text.RegularExpressions.Match m in matches)
         {
-            placeholders.Add(match.Groups[1].Value);
+            var key = m.Groups[1].Value;
+            if (seen.Add(key)) yield return key;
         }
-        
-        return placeholders.Distinct().ToList();
     }
 }

@@ -98,6 +98,46 @@ export function renderPlaceholder(def: PlaceholderDefinition, value: string | un
 
 const EXPR_RE = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
 
+/**
+ * Placeholder keys the renderer injects automatically for every group.
+ * These should never auto-appear in a template's PlaceholderSchema because
+ * they come from the draft / group, not from user-fillable inputs.
+ */
+export const BUILT_IN_PLACEHOLDERS = [
+  'common_text',
+  'group_tags',
+  'theme_tags',
+  'group_name',
+] as const;
+
+export type BuiltInPlaceholder = (typeof BUILT_IN_PLACEHOLDERS)[number];
+
+export function isBuiltInPlaceholder(key: string): boolean {
+  return (BUILT_IN_PLACEHOLDERS as readonly string[]).includes(key);
+}
+
+/**
+ * Returns the unique set of placeholder keys referenced in a template body,
+ * in first-appearance order. Used by the editor to auto-add schema entries
+ * for keys the user has typed into the Body field.
+ */
+export function extractPlaceholderKeys(body: string): string[] {
+  if (!body) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  // A fresh regex per call because EXPR_RE has the /g flag and carries state.
+  const re = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const key = m[1];
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(key);
+    }
+  }
+  return result;
+}
+
 export function renderTemplate(body: string, ctx: Record<string, string>): string {
   return body.replace(EXPR_RE, (_, key: string) => (ctx[key] ?? ''));
 }
