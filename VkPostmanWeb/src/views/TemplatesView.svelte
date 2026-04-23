@@ -44,18 +44,20 @@
   const autosave = createAutosave<PostTemplate>({
     get: () => editing,
     save: async (snap) => { await saveTemplate(snap); },
+    snapshot: (v) => $state.snapshot(v) as PostTemplate,
     delayMs: 500,
     onStatus: (s) => (saveStatus = s),
   });
   $effect(autosave.watch);
 
-  function edit(t: PostTemplate) {
-    void autosave.flush();
+  async function edit(t: PostTemplate) {
+    await autosave.flush();
     editing = {
       ...t,
       defaultThemeTags: [...t.defaultThemeTags],
     };
     defaultTagsInput = t.defaultThemeTags.join(' ');
+    autosave.reset();
   }
 
   async function close() {
@@ -67,7 +69,7 @@
     await autosave.flush();
     const id = await createTemplate();
     const t = await db.templates.get(id);
-    if (t) edit(t);
+    if (t) await edit(t);
   }
 
   async function remove(t: PostTemplate) {

@@ -38,14 +38,19 @@
   const autosave = createAutosave<PlaceholderDefinition>({
     get: () => editing,
     save: async (snap) => { await savePlaceholder(snap); },
+    // $state.snapshot gives us a plain object that Dexie/structuredClone
+    // handle reliably — avoids a class of "proxy can't be cloned" errors.
+    snapshot: (v) => $state.snapshot(v) as PlaceholderDefinition,
     delayMs: 500,
     onStatus: (s) => (saveStatus = s),
   });
   $effect(autosave.watch);
 
-  function edit(d: PlaceholderDefinition) {
-    void autosave.flush();
+  async function edit(d: PlaceholderDefinition) {
+    await autosave.flush();
     editing = { ...d };
+    // Adopt this record as the baseline so just-opening-it doesn't count as dirty.
+    autosave.reset();
   }
 
   async function close() {
@@ -64,7 +69,7 @@
       updatedAt: now,
     };
     const id = await db.placeholders.add(def);
-    edit({ ...def, id });
+    await edit({ ...def, id });
   }
 
   async function remove(d: PlaceholderDefinition) {
@@ -152,7 +157,19 @@
         </div>
         <div class="stack">
           <label for="p-type">Type</label>
-          <select id="p-type" bind:value={editing.type}>
+          <!--
+            value + onchange instead of bind:value — avoids the well-known
+            Svelte select-binding race where an initial render without options
+            can clobber the bound value with the first available option.
+          -->
+          <select
+            id="p-type"
+            value={editing.type}
+            onchange={(e) => {
+              const raw = (e.currentTarget as HTMLSelectElement).value;
+              editing!.type = Number(raw) as PlaceholderType;
+            }}
+          >
             {#each typeOptions as opt (opt.v)}
               <option value={opt.v}>{opt.label}</option>
             {/each}

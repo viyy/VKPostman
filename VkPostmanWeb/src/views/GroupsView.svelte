@@ -38,15 +38,17 @@
     save: async (snap) => {
       await saveGroup(snap);
     },
+    snapshot: (v) => $state.snapshot(v) as TargetGroup,
     delayMs: 500,
     onStatus: (s) => (saveStatus = s),
   });
   $effect(autosave.watch);
 
-  function edit(g: TargetGroup) {
-    void autosave.flush();
+  async function edit(g: TargetGroup) {
+    await autosave.flush();
     editing = { ...g };
     tagsInput = (g.mandatoryTags ?? []).join(' ');
+    autosave.reset();
   }
 
   async function close() {
@@ -58,7 +60,7 @@
     await autosave.flush();
     const id = await createGroup('');
     const g = await db.groups.get(id);
-    if (g) edit(g);
+    if (g) await edit(g);
   }
 
   async function removeGroup(g: TargetGroup) {
