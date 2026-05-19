@@ -326,7 +326,7 @@
                 {#if def?.type === PlaceholderType.WikiLink}
                   <div class="row" style="gap: 0.5rem;">
                     <div class="stack grow">
-                      <span class="muted">target (e.g. nelfias, club123)</span>
+                      <span class="muted">target (e.g. theowlettcosplay, nelfias_cosph)</span>
                       <input
                         type="text"
                         value={wikiTarget(u.key)}
@@ -334,7 +334,7 @@
                       />
                     </div>
                     <div class="stack grow">
-                      <span class="muted">displayed text</span>
+                      <span class="muted">displayed text (e.g. The Owlett ✦ Cosplay, Nelfias - Cosplay Photo СПб)</span>
                       <input
                         type="text"
                         value={wikiDisplay(u.key)}
