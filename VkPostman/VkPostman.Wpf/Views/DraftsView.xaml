@@ -148,12 +148,12 @@
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0">
-                                                <TextBlock Text="target (e.g. nelfias or club123)"
+                                                <TextBlock Text="target (e.g. theowlettcosplay, nelfias_cosph)"
                                                            Style="{StaticResource MutedText}" />
                                                 <TextBox Text="{Binding WikiTarget, UpdateSourceTrigger=PropertyChanged}" />
                                             </StackPanel>
                                             <StackPanel Grid.Column="2">
-                                                <TextBlock Text="displayed text"
+                                                <TextBlock Text="displayed text (e.g. The Owlett ✦ Cosplay, Nelfias - Cosplay Photo СПб)"
                                                            Style="{StaticResource MutedText}" />
                                                 <TextBox Text="{Binding WikiDisplay, UpdateSourceTrigger=PropertyChanged}" />
                                             </StackPanel>
