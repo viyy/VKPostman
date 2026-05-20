@@ -55,6 +55,7 @@ public partial class App : Application
                 services.AddScoped<TemplateService>();
                 services.AddScoped<PlaceholderService>();
                 services.AddScoped<ExchangeService>();
+                services.AddSingleton<NavigationService>();
 
                 services.AddTransient<MainViewModel>();
                 services.AddTransient<DraftsViewModel>();

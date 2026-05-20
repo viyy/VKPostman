@@ -15,6 +15,13 @@
     type PostTemplate,
     type TargetGroup,
   } from '../lib/types';
+  import { nav } from '../lib/nav.svelte';
+
+  /** Collapsed state for the Target groups block (persists across reloads). */
+  let groupsCollapsed = $state(localStorage.getItem('vkp.draftGroupsCollapsed') === '1');
+  $effect(() => {
+    localStorage.setItem('vkp.draftGroupsCollapsed', groupsCollapsed ? '1' : '0');
+  });
 
   // ---- Live data -----------------------------------------------------------
   const draftsQuery    = liveQuery(() => db.drafts.orderBy('updatedAt').reverse().toArray());
@@ -268,42 +275,55 @@
         </div>
       </div>
 
-      <!-- Target groups -->
+      <!-- Target groups (collapsible) -->
       <div class="card">
-        <div class="card-header">
+        <button
+          type="button"
+          class="collapse-header"
+          aria-expanded={!groupsCollapsed}
+          onclick={() => (groupsCollapsed = !groupsCollapsed)}
+        >
+          <span class="collapse-chevron" class:collapsed={groupsCollapsed}>▾</span>
           <h3 style="margin: 0;">Target groups</h3>
-          <span class="muted">
+          <span class="muted" style="margin-left: auto;">
             {draft.targetGroupIds.length} of {groups.length} selected
           </span>
-        </div>
-        {#if groups.length === 0}
-          <p class="muted">
-            No groups yet — add some on the <strong>Groups</strong> tab.
-          </p>
-        {:else}
-          <div>
-            {#each groups as g (g.id)}
-              {@const hasTpl = g.postTemplateId != null}
-              <label class="pick-row" class:disabled={!hasTpl}>
-                <input
-                  type="checkbox"
-                  disabled={!hasTpl}
-                  checked={draft.targetGroupIds.includes(g.id!)}
-                  onchange={() => toggleGroup(g)}
-                />
-                <div class="grow">
-                  <strong>{g.displayName}</strong>
-                  <div class="muted">
-                    @{g.screenName} · {#if hasTpl}
-                      template: <em>{templatesById.get(g.postTemplateId!)?.name ?? '(deleted)'}</em>
-                    {:else}
-                      <span class="warn">⚠ no template assigned</span>
-                    {/if}
+        </button>
+        {#if !groupsCollapsed}
+          {#if groups.length === 0}
+            <p class="muted">
+              No groups yet — add some on the <strong>Groups</strong> tab.
+            </p>
+          {:else}
+            <div>
+              {#each groups as g (g.id)}
+                {@const hasTpl = g.postTemplateId != null}
+                <label class="pick-row" class:disabled={!hasTpl}>
+                  <input
+                    type="checkbox"
+                    disabled={!hasTpl}
+                    checked={draft.targetGroupIds.includes(g.id!)}
+                    onchange={() => toggleGroup(g)}
+                  />
+                  <div class="grow">
+                    <strong>{g.displayName}</strong>
+                    <div class="muted">
+                      @{g.screenName} · {#if hasTpl}
+                        template:
+                        <button
+                          type="button"
+                          class="link-btn"
+                          onclick={(e) => { e.preventDefault(); nav.openTemplate(g.postTemplateId!); }}
+                        >{templatesById.get(g.postTemplateId!)?.name ?? '(deleted)'}</button>
+                      {:else}
+                        <span class="warn">⚠ no template assigned</span>
+                      {/if}
+                    </div>
                   </div>
-                </div>
-              </label>
-            {/each}
-          </div>
+                </label>
+              {/each}
+            </div>
+          {/if}
         {/if}
       </div>
 

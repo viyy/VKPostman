@@ -87,34 +87,58 @@
 
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
-                        <TextBlock Text="Target groups" Style="{StaticResource SectionHeader}" />
-                        <TextBlock Text="Groups without a template are disabled."
-                                   Style="{StaticResource MutedText}"
-                                   Margin="0,0,0,8" />
-                        <ItemsControl ItemsSource="{Binding AllGroups}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="0,3">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <CheckBox Grid.Column="0"
-                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                                  IsEnabled="{Binding HasTemplate}"
-                                                  VerticalAlignment="Center"
-                                                  Margin="0,0,10,0" />
-                                        <StackPanel Grid.Column="1">
-                                            <TextBlock Text="{Binding Group.DisplayName}" FontWeight="SemiBold" />
-                                            <TextBlock>
-                                                <Run Text="@" /><Run Text="{Binding Group.ScreenName, Mode=OneWay}" />
-                                                <Run Text=" · " /><Run Text="{Binding HasTemplateHint, Mode=OneWay}" />
-                                            </TextBlock>
-                                        </StackPanel>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <!-- Collapsible header -->
+                        <Button Command="{Binding ToggleGroupsCommand}"
+                                Background="Transparent" BorderThickness="0" Padding="0"
+                                HorizontalContentAlignment="Stretch" Cursor="Hand">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding GroupsExpanded, Converter={x:Static vm:ChevronConverter.Instance}}"
+                                           Foreground="{StaticResource VkTextSecondaryBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,8,0" />
+                                <TextBlock Text="Target groups" Style="{StaticResource SectionHeader}" Margin="0" />
+                            </StackPanel>
+                        </Button>
+
+                        <StackPanel Visibility="{Binding GroupsExpanded, Converter={x:Static vm:BoolToVisibilityConverter.Instance}}">
+                            <TextBlock Text="Groups without a template are disabled."
+                                       Style="{StaticResource MutedText}"
+                                       Margin="0,8,0,8" />
+                            <ItemsControl ItemsSource="{Binding AllGroups}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox Grid.Column="0"
+                                                      IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                      IsEnabled="{Binding HasTemplate}"
+                                                      VerticalAlignment="Center"
+                                                      Margin="0,0,10,0" />
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding Group.DisplayName}" FontWeight="SemiBold" />
+                                                <!-- has a template: name is a link to the Templates tab -->
+                                                <TextBlock Visibility="{Binding HasTemplate, Converter={x:Static vm:BoolToVisibilityConverter.Instance}}">
+                                                    <Run Text="@" /><Run Text="{Binding Group.ScreenName, Mode=OneWay}" />
+                                                    <Run Text=" · template: " />
+                                                    <Hyperlink Command="{Binding DataContext.OpenTemplateCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                               CommandParameter="{Binding TemplateId}">
+                                                        <Run Text="{Binding TemplateName, Mode=OneWay}" />
+                                                    </Hyperlink>
+                                                </TextBlock>
+                                                <!-- no template -->
+                                                <TextBlock Visibility="{Binding HasTemplate, Converter={x:Static vm:InverseBoolToVisibilityConverter.Instance}}">
+                                                    <Run Text="@" /><Run Text="{Binding Group.ScreenName, Mode=OneWay}" />
+                                                    <Run Text=" · " /><Run Text="⚠ no template assigned" Foreground="#E64646" />
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 

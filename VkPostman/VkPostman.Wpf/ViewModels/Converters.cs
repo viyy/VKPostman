@@ -41,6 +41,15 @@ public sealed class ZeroToVisibilityConverter : IValueConverter
 }
 
 /// <summary>bool → Visibility.Visible if false, else Collapsed.</summary>
+/// <summary>bool → a collapse chevron glyph: ▾ when expanded (true), ▸ when collapsed (false).</summary>
+public sealed class ChevronConverter : IValueConverter
+{
+    public static readonly ChevronConverter Instance = new();
+    public object Convert(object? value, Type t, object? p, CultureInfo c) =>
+        (value is true) ? "▾" : "▸";
+    public object ConvertBack(object? v, Type t, object? p, CultureInfo c) => throw new NotSupportedException();
+}
+
 public sealed class InverseBoolToVisibilityConverter : IValueConverter
 {
     public static readonly InverseBoolToVisibilityConverter Instance = new();

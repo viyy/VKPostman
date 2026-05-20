@@ -16,6 +16,7 @@ public partial class DraftsViewModel : ObservableObject
     private readonly GroupService _groups;
     private readonly PlaceholderService _placeholders;
     private readonly ITemplateEngine _engine;
+    private readonly NavigationService _navigation;
 
     /// <summary>Fresh-every-render snapshot of the library, keyed by key.</summary>
     private Dictionary<string, PlaceholderDefinition> _library = new(StringComparer.Ordinal);
@@ -28,17 +29,32 @@ public partial class DraftsViewModel : ObservableObject
     [ObservableProperty] private PostDraft? currentDraft;
     [ObservableProperty] private string themeTagsInput = "";
 
+    /// <summary>Collapse state for the Target groups block.</summary>
+    [ObservableProperty] private bool groupsExpanded = true;
+
     public DraftsViewModel(
         DraftService drafts,
         GroupService groups,
         PlaceholderService placeholders,
-        ITemplateEngine engine)
+        ITemplateEngine engine,
+        NavigationService navigation)
     {
         _drafts = drafts;
         _groups = groups;
         _placeholders = placeholders;
         _engine = engine;
+        _navigation = navigation;
         _ = InitAsync();
+    }
+
+    [RelayCommand]
+    private void ToggleGroups() => GroupsExpanded = !GroupsExpanded;
+
+    /// <summary>Jump to the Templates tab and open the given template (from a group row link).</summary>
+    [RelayCommand]
+    private void OpenTemplate(int? templateId)
+    {
+        if (templateId is int id) _navigation.RequestTemplate(id);
     }
 
     private async Task InitAsync()
@@ -250,6 +266,11 @@ public partial class GroupSelection : ObservableObject
         Group.PostTemplate is null ? "⚠ no template assigned" : $"template: {Group.PostTemplate.Name}";
 
     public bool HasTemplate => Group.PostTemplate is not null;
+
+    /// <summary>Template id for the "open template" link (null when unassigned).</summary>
+    public int? TemplateId => Group.PostTemplateId;
+
+    public string TemplateName => Group.PostTemplate?.Name ?? "(deleted)";
 
     public GroupSelection(TargetGroup group, bool isSelected)
     {

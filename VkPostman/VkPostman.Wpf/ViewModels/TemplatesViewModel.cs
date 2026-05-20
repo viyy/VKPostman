@@ -37,6 +37,10 @@ public partial class TemplatesViewModel : ObservableObject
 
     public Autosave<PostTemplate> Autosave { get; }
 
+    /// <summary>The initial load — awaited by <see cref="OpenTemplateByIdAsync"/> so a
+    /// navigation request that arrives before the list is populated still works.</summary>
+    private readonly Task _loadTask;
+
     public TemplatesViewModel(TemplateService templates, PlaceholderService placeholders)
     {
         _templates = templates;
@@ -47,7 +51,7 @@ public partial class TemplatesViewModel : ObservableObject
             save: SaveCurrentAsync);
         Autosave.Start();
 
-        _ = LoadAsync();
+        _loadTask = LoadAsync();
     }
 
     private async Task LoadAsync()
@@ -56,6 +60,15 @@ public partial class TemplatesViewModel : ObservableObject
         foreach (var t in await _templates.GetAllAsync())
             Templates.Add(t);
         await RefreshLibraryAsync();
+    }
+
+    /// <summary>Open a template by id, waiting for the initial load if needed.</summary>
+    public async Task OpenTemplateByIdAsync(int id)
+    {
+        await _loadTask;
+        var t = Templates.FirstOrDefault(x => x.Id == id);
+        if (t is not null)
+            await EditTemplateAsync(t);
     }
 
     private async Task RefreshLibraryAsync()

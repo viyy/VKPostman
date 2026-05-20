@@ -11,6 +11,7 @@
     extractLibraryPlaceholderKeys,
     isBuiltInPlaceholder,
   } from '../lib/render';
+  import { nav } from '../lib/nav.svelte';
   import { tick } from 'svelte';
 
   const templatesQuery = liveQuery(() => db.templates.orderBy('updatedAt').reverse().toArray());
@@ -26,6 +27,21 @@
   $effect(() => {
     const s = libraryQuery.subscribe({ next: (v) => (library = v) });
     return () => s.unsubscribe();
+  });
+
+  // Honour a "jump to this template" request from another tab (e.g. the
+  // Drafts page's clickable template link). Re-runs when templates load,
+  // so it works even if the request lands before the liveQuery resolves.
+  $effect(() => {
+    const reqId = nav.requestedTemplateId;
+    if (reqId == null) return;
+    const list = templates;
+    if (!list) return; // wait for the liveQuery
+    const t = list.find((x) => x.id === reqId);
+    if (t) {
+      nav.requestedTemplateId = null;
+      void edit(t);
+    }
   });
 
   let editing = $state<PostTemplate | null>(null);
