@@ -4,11 +4,15 @@
   import GroupsView from './views/GroupsView.svelte';
   import PlaceholdersView from './views/PlaceholdersView.svelte';
   import { downloadExport, exportAll, importFromFile } from './lib/exchange';
+  import { nav, type Tab } from './lib/nav.svelte';
 
-  type Tab = 'drafts' | 'templates' | 'placeholders' | 'groups';
-  let tab = $state<Tab>((localStorage.getItem('vkp.tab') as Tab | null) ?? 'drafts');
+  // Restore the last-used tab, then persist any change. The active tab itself
+  // lives in the shared nav store so other views can switch tabs (e.g. a
+  // template link on the Drafts page jumping to the Templates tab).
+  const savedTab = localStorage.getItem('vkp.tab') as Tab | null;
+  if (savedTab) nav.tab = savedTab;
   $effect(() => {
-    localStorage.setItem('vkp.tab', tab);
+    localStorage.setItem('vkp.tab', nav.tab);
   });
 
   // Settings sheet state
@@ -74,7 +78,7 @@
   <div class="topbar">
     <span class="brand">✉️ VK Postman</span>
     <span class="muted" style="color: rgba(255,255,255,0.75); font-size: 0.78rem;">
-      offline · local-only
+      v{__APP_VERSION__} · offline · local-only
     </span>
     <div style="flex: 1;"></div>
     <div class="menu-wrap">
@@ -104,40 +108,40 @@
   <nav class="tabs" role="tablist">
     <button
       class="tab"
-      class:active={tab === 'drafts'}
+      class:active={nav.tab === 'drafts'}
       role="tab"
-      aria-selected={tab === 'drafts'}
-      onclick={() => (tab = 'drafts')}
+      aria-selected={nav.tab === 'drafts'}
+      onclick={() => (nav.tab = 'drafts')}
     >📝 Drafts</button>
     <button
       class="tab"
-      class:active={tab === 'templates'}
+      class:active={nav.tab === 'templates'}
       role="tab"
-      aria-selected={tab === 'templates'}
-      onclick={() => (tab = 'templates')}
+      aria-selected={nav.tab === 'templates'}
+      onclick={() => (nav.tab = 'templates')}
     >📄 Templates</button>
     <button
       class="tab"
-      class:active={tab === 'placeholders'}
+      class:active={nav.tab === 'placeholders'}
       role="tab"
-      aria-selected={tab === 'placeholders'}
-      onclick={() => (tab = 'placeholders')}
+      aria-selected={nav.tab === 'placeholders'}
+      onclick={() => (nav.tab = 'placeholders')}
     >🏷 Placeholders</button>
     <button
       class="tab"
-      class:active={tab === 'groups'}
+      class:active={nav.tab === 'groups'}
       role="tab"
-      aria-selected={tab === 'groups'}
-      onclick={() => (tab = 'groups')}
+      aria-selected={nav.tab === 'groups'}
+      onclick={() => (nav.tab = 'groups')}
     >👥 Groups</button>
   </nav>
 
   <main class="content">
-    {#if tab === 'drafts'}
+    {#if nav.tab === 'drafts'}
       <DraftsView />
-    {:else if tab === 'templates'}
+    {:else if nav.tab === 'templates'}
       <TemplatesView />
-    {:else if tab === 'placeholders'}
+    {:else if nav.tab === 'placeholders'}
       <PlaceholdersView />
     {:else}
       <GroupsView />

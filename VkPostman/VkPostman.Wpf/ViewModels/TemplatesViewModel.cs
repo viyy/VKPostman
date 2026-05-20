@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using VkPostman.Core.Models;
@@ -37,6 +38,13 @@ public partial class TemplatesViewModel : ObservableObject
 
     public Autosave<PostTemplate> Autosave { get; }
 
+    /// <summary>The initial load — awaited by <see cref="OpenTemplateByIdAsync"/> so a
+    /// navigation request that arrives before the list is populated still works.</summary>
+    private readonly Task _loadTask;
+
+    /// <summary>Debounces library auto-add so half-typed keys aren't all persisted.</summary>
+    private readonly DispatcherTimer _ensureTimer;
+
     public TemplatesViewModel(TemplateService templates, PlaceholderService placeholders)
     {
         _templates = templates;
@@ -47,7 +55,14 @@ public partial class TemplatesViewModel : ObservableObject
             save: SaveCurrentAsync);
         Autosave.Start();
 
-        _ = LoadAsync();
+        _ensureTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+        _ensureTimer.Tick += async (_, _) =>
+        {
+            _ensureTimer.Stop();
+            await AutoEnsureReferencedPlaceholdersAsync();
+        };
+
+        _loadTask = LoadAsync();
     }
 
     private async Task LoadAsync()
@@ -56,6 +71,15 @@ public partial class TemplatesViewModel : ObservableObject
         foreach (var t in await _templates.GetAllAsync())
             Templates.Add(t);
         await RefreshLibraryAsync();
+    }
+
+    /// <summary>Open a template by id, waiting for the initial load if needed.</summary>
+    public async Task OpenTemplateByIdAsync(int id)
+    {
+        await _loadTask;
+        var t = Templates.FirstOrDefault(x => x.Id == id);
+        if (t is not null)
+            await EditTemplateAsync(t);
     }
 
     private async Task RefreshLibraryAsync()
@@ -158,9 +182,12 @@ public partial class TemplatesViewModel : ObservableObject
         if (SelectedTemplate is null) return;
         SelectedTemplate.BodyTemplate = value;
         RecomputeAutocompleteQuery();
-        _ = AutoEnsureReferencedPlaceholdersAsync();
         RecomputeSuggestions();
         RecomputeUsedPlaceholders();
+        // Debounce the library auto-add — restart the timer on each keystroke so
+        // only the settled key gets persisted, not every intermediate state.
+        _ensureTimer.Stop();
+        _ensureTimer.Start();
     }
 
     partial void OnBodyCaretChanged(int value)

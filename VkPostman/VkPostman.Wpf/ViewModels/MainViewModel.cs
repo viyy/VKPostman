@@ -14,12 +14,30 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string? ioMessage;
     [ObservableProperty] private bool ioMessageIsError;
 
+    /// <summary>App version (from the assembly), shown in the sidebar footer.</summary>
+    public string AppVersion =>
+        System.Reflection.Assembly.GetExecutingAssembly().GetName().Version is { } v
+            ? $"v{v.Major}.{v.Minor}.{v.Build}"
+            : "";
+
     private readonly IServiceProvider _sp;
 
-    public MainViewModel(IServiceProvider sp)
+    public MainViewModel(IServiceProvider sp, NavigationService navigation)
     {
         _sp = sp;
+        navigation.TemplateRequested += OnTemplateRequested;
         IsDraftsSelected = true;
+    }
+
+    /// <summary>
+    /// Switch to the Templates tab (which builds a fresh TemplatesViewModel)
+    /// and ask it to open the requested template.
+    /// </summary>
+    private async void OnTemplateRequested(int templateId)
+    {
+        IsTemplatesSelected = true;
+        if (CurrentView is TemplatesViewModel vm)
+            await vm.OpenTemplateByIdAsync(templateId);
     }
 
     [RelayCommand]

@@ -53,6 +53,10 @@
                             Background="Transparent"
                             Cursor="Hand"
                             Command="{Binding ImportDataCommand}" />
+                    <TextBlock Text="{Binding AppVersion}"
+                               Foreground="{StaticResource VkTextSecondaryBrush}"
+                               FontSize="11"
+                               Margin="12,6,0,0" />
                 </StackPanel>
 
                 <StackPanel Margin="8,10,8,0">
