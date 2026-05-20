@@ -10,6 +10,8 @@
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>VkPostman</AssemblyName>
+    <!-- Keep in step with VkPostmanWeb/package.json so both surfaces show the same version. -->
+    <Version>0.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

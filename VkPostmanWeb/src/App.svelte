@@ -78,7 +78,7 @@
   <div class="topbar">
     <span class="brand">✉️ VK Postman</span>
     <span class="muted" style="color: rgba(255,255,255,0.75); font-size: 0.78rem;">
-      offline · local-only
+      v{__APP_VERSION__} · offline · local-only
     </span>
     <div style="flex: 1;"></div>
     <div class="menu-wrap">

@@ -14,6 +14,12 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string? ioMessage;
     [ObservableProperty] private bool ioMessageIsError;
 
+    /// <summary>App version (from the assembly), shown in the sidebar footer.</summary>
+    public string AppVersion =>
+        System.Reflection.Assembly.GetExecutingAssembly().GetName().Version is { } v
+            ? $"v{v.Major}.{v.Minor}.{v.Build}"
+            : "";
+
     private readonly IServiceProvider _sp;
 
     public MainViewModel(IServiceProvider sp, NavigationService navigation)

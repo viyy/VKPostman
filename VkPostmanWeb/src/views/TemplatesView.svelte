@@ -136,20 +136,24 @@
 
   /**
    * When a library-bound key appears in the body and isn't in the library yet,
-   * fire-and-forget an ensure() to create it. Dexie's liveQuery refreshes
-   * `library` automatically on the next microtask.
+   * create it. Debounced ~1.2s after the last keystroke so half-typed keys
+   * ({{ group_ }}, {{ group_h }}, …) don't each get persisted — only the
+   * settled key does. ensurePlaceholder() is idempotent (checks the DB first),
+   * so this stays safe even if the timer fires twice.
    */
-  let _lastEnsuredKeys = new Set<string>();
+  const ENSURE_DELAY_MS = 1200;
+  let _ensureTimer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
     if (!editing) return;
-    const keys = extractLibraryPlaceholderKeys(editing.bodyTemplate);
-    const existing = new Set(library.map((d) => d.key));
-    for (const key of keys) {
-      if (existing.has(key)) continue;
-      if (_lastEnsuredKeys.has(key)) continue;
-      _lastEnsuredKeys.add(key);
-      void ensurePlaceholder(key);
-    }
+    const body = editing.bodyTemplate; // dependency
+    clearTimeout(_ensureTimer);
+    _ensureTimer = setTimeout(() => {
+      const existing = new Set(library.map((d) => d.key));
+      for (const key of extractLibraryPlaceholderKeys(body)) {
+        if (!existing.has(key)) void ensurePlaceholder(key);
+      }
+    }, ENSURE_DELAY_MS);
+    return () => clearTimeout(_ensureTimer);
   });
 
   async function insertPlaceholderAtCaret(key: string) {
