@@ -93,6 +93,24 @@
     themeTagsInput = cur ? `${cur} ${tag}` : tag;
   }
 
+  // ---- Target-group marker filter ------------------------------------------
+  let groupMarkerFilter = $state<Set<string>>(new Set());
+  const availableMarkers = $derived.by(() => {
+    const set = new Set<string>();
+    for (const g of groups) for (const m of g.markers ?? []) set.add(m);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  });
+  const pickGroups = $derived.by(() => {
+    if (groupMarkerFilter.size === 0) return groups;
+    return groups.filter((g) => (g.markers ?? []).some((m) => groupMarkerFilter.has(m)));
+  });
+  function toggleMarkerFilter(m: string) {
+    const next = new Set(groupMarkerFilter);
+    if (next.has(m)) next.delete(m);
+    else next.add(m);
+    groupMarkerFilter = next;
+  }
+
   // ---- Image attachment notes (filenames/paths only) -----------------------
   let imageNoteInput = $state('');
   let dragOver = $state(false);
@@ -706,8 +724,24 @@
               No groups yet — add some on the <strong>Groups</strong> tab.
             </p>
           {:else}
+            {#if availableMarkers.length > 0}
+              <div class="marker-filter">
+                <span class="muted" style="font-size: 0.75rem;">Filter by marker:</span>
+                {#each availableMarkers as m (m)}
+                  <button
+                    type="button"
+                    class="marker-chip filter"
+                    class:on={groupMarkerFilter.has(m)}
+                    onclick={() => toggleMarkerFilter(m)}
+                  >{m}</button>
+                {/each}
+                {#if groupMarkerFilter.size > 0}
+                  <button type="button" class="link-btn" onclick={() => (groupMarkerFilter = new Set())}>clear</button>
+                {/if}
+              </div>
+            {/if}
             <div>
-              {#each groups as g (g.id)}
+              {#each pickGroups as g (g.id)}
                 {@const hasTpl = g.postTemplateId != null}
                 <label class="pick-row" class:disabled={!hasTpl}>
                   <input
@@ -730,9 +764,17 @@
                         <span class="warn"><TriangleAlert size={13} class="inline-ico" /> no template assigned</span>
                       {/if}
                     </div>
+                    {#if (g.markers ?? []).length > 0}
+                      <span class="marker-row">
+                        {#each g.markers ?? [] as m (m)}<span class="marker-chip">{m}</span>{/each}
+                      </span>
+                    {/if}
                   </div>
                 </label>
               {/each}
+              {#if pickGroups.length === 0}
+                <p class="muted">No groups match the selected markers.</p>
+              {/if}
             </div>
           {/if}
         {/if}
@@ -1016,6 +1058,27 @@
     font-size: 0.9rem;
   }
   .img-remove:hover { background: var(--vk-danger-bg); color: var(--vk-danger); }
+
+  /* Target-group marker filter. */
+  .marker-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+    margin-bottom: 0.5rem;
+  }
+  .marker-chip.filter {
+    appearance: none;
+    border: 1px solid var(--vk-border-strong);
+    background: transparent;
+    color: var(--vk-text-secondary);
+    cursor: pointer;
+  }
+  .marker-chip.filter.on {
+    background: var(--vk-blue);
+    border-color: var(--vk-blue);
+    color: var(--vk-on-primary);
+  }
 
   /* Validation issues panel on the Draft details card. */
   .issues {

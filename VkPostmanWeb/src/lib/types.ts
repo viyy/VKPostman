@@ -44,6 +44,11 @@ export interface TargetGroup {
   screenName: string;        // without leading @
   displayName: string;
   mandatoryTags: string[];
+  /**
+   * Organizational labels for the group (e.g. "cosplay", "street") — used to
+   * filter/group in the UI. Distinct from mandatoryTags, which are post hashtags.
+   */
+  markers?: string[];
   postTemplateId?: number;   // nullable — groups can exist without a template
   isActive: boolean;
   notes: string;

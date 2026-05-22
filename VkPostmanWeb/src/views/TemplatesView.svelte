@@ -1,6 +1,6 @@
 <script lang="ts">
   import { liveQuery } from 'dexie';
-  import { db, createTemplate, saveTemplate, deleteTemplate, ensurePlaceholder } from '../lib/db';
+  import { db, createTemplate, saveTemplate, deleteTemplate, ensurePlaceholder, saveGroup } from '../lib/db';
   import {
     type PlaceholderDefinition,
     type PostTemplate,
@@ -17,6 +17,7 @@
   import { knownTagsQuery } from '../lib/tags';
   import { undo } from '../lib/undo.svelte';
   import TagSuggestions from './TagSuggestions.svelte';
+  import SearchSelect from './SearchSelect.svelte';
   import { Plus, Trash2, ExternalLink, Users } from '@lucide/svelte';
   import { tick } from 'svelte';
 
@@ -112,6 +113,19 @@
   const usingGroups = $derived(
     editing?.id != null ? groupsByTemplateId.get(editing.id) ?? [] : [],
   );
+  // Groups NOT yet using this template — candidates to link.
+  const unlinkedGroups = $derived(
+    editing?.id != null ? groups.filter((g) => g.postTemplateId !== editing!.id) : [],
+  );
+
+  /** Assign this template to a group (overwrites that group's template). */
+  async function linkGroup(gid: number | undefined) {
+    if (gid == null || editing?.id == null) return;
+    const g = await db.groups.get(gid);
+    if (!g) return;
+    g.postTemplateId = editing.id;
+    await saveGroup(g);
+  }
 
   // Keep the tag-input in sync with the editing payload so autosave fires.
   $effect(() => {
@@ -416,8 +430,22 @@
 
         <div>
           <h4 style="margin: 1rem 0 0.4rem;">Used by groups</h4>
+          {#if editing.id != null}
+            <div class="row" style="gap: 0.4rem; margin-bottom: 0.5rem;">
+              <div class="grow">
+                <SearchSelect
+                  value={undefined}
+                  items={unlinkedGroups.map((g) => ({ id: g.id, label: g.displayName, sub: `@${g.screenName}` }))}
+                  allowNone={false}
+                  triggerPlaceholder="Link a group to this template…"
+                  searchPlaceholder="Search groups…"
+                  onchange={linkGroup}
+                />
+              </div>
+            </div>
+          {/if}
           {#if usingGroups.length === 0}
-            <p class="muted">No groups use this template yet. Assign it on the <strong>Groups</strong> tab.</p>
+            <p class="muted">No groups use this template yet. Pick one above to link it.</p>
           {:else}
             <div class="stack" style="gap: 0.25rem;">
               {#each usingGroups as g (g.id)}

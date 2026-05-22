@@ -6,7 +6,7 @@
   import { knownTagsQuery } from '../lib/tags';
   import { undo } from '../lib/undo.svelte';
   import TagSuggestions from './TagSuggestions.svelte';
-  import TemplateSelect from './TemplateSelect.svelte';
+  import SearchSelect from './SearchSelect.svelte';
   import { nav } from '../lib/nav.svelte';
   import { Plus, Pin, Trash2, ExternalLink } from '@lucide/svelte';
 
@@ -37,6 +37,18 @@
     tagsInput = cur ? `${cur} ${tag}` : tag;
   }
 
+  function addMarker(m: string) {
+    const cur = markersInput.trim();
+    markersInput = cur ? `${cur} ${m}` : m;
+  }
+
+  // All markers used across groups, for the suggestion chips.
+  const knownMarkers = $derived.by(() => {
+    const set = new Set<string>();
+    for (const g of groups ?? []) for (const m of g.markers ?? []) set.add(m);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  });
+
   // Honour an "open this group" request (e.g. a link from the Templates tab).
   $effect(() => {
     const id = nav.requestedGroupId;
@@ -50,6 +62,7 @@
 
   let editing = $state<TargetGroup | null>(null);
   let tagsInput = $state('');
+  let markersInput = $state('');
   let saveStatus = $state<AutosaveStatus>('idle');
 
   // ---- Search (by group name, alias, or assigned template name) ------------
@@ -61,7 +74,8 @@
         !q ||
         g.displayName.toLowerCase().includes(q) ||
         g.screenName.toLowerCase().includes(q) ||
-        templateName(g.postTemplateId).toLowerCase().includes(q),
+        templateName(g.postTemplateId).toLowerCase().includes(q) ||
+        (g.markers ?? []).some((m) => m.toLowerCase().includes(q)),
     );
     // Pinned groups float to the top; otherwise keep the query's name order.
     return [...list].sort(
@@ -74,6 +88,15 @@
     if (!editing) return;
     editing.mandatoryTags = tagsInput
       .split(/\s+/)
+      .map((t) => t.replace(/^#+/, '').trim())
+      .filter(Boolean);
+  });
+
+  // Keep editing.markers in sync with its input.
+  $effect(() => {
+    if (!editing) return;
+    editing.markers = markersInput
+      .split(/[\s,]+/)
       .map((t) => t.replace(/^#+/, '').trim())
       .filter(Boolean);
   });
@@ -93,6 +116,7 @@
     await autosave.flush();
     editing = { ...g };
     tagsInput = (g.mandatoryTags ?? []).join(' ');
+    markersInput = (g.markers ?? []).join(' ');
     autosave.reset();
   }
 
@@ -165,6 +189,11 @@
               <span class="meta">
                 @{g.screenName} · template: <em>{templateName(g.postTemplateId)}</em>
               </span>
+              {#if (g.markers ?? []).length > 0}
+                <span class="marker-row">
+                  {#each g.markers ?? [] as m (m)}<span class="marker-chip">{m}</span>{/each}
+                </span>
+              {/if}
             </button>
           {/each}
         </div>
@@ -204,10 +233,11 @@
           <label for="g-template">Template</label>
           <div class="row" style="gap: 0.4rem; align-items: stretch;">
             <div class="grow">
-              <TemplateSelect
+              <SearchSelect
                 id="g-template"
                 value={editing.postTemplateId}
-                templates={templates}
+                items={templates.map((t) => ({ id: t.id, label: t.name }))}
+                searchPlaceholder="Search templates…"
                 onchange={(tid) => (editing!.postTemplateId = tid)}
               />
             </div>
@@ -227,6 +257,12 @@
           <input id="g-tags" type="text" bind:value={tagsInput} />
           <TagSuggestions tags={knownTags} current={tagsInput} onpick={addTag} />
           <span class="muted">Appended to posts via <code>{'{{ group_tags }}'}</code>.</span>
+        </div>
+        <div class="stack">
+          <label for="g-markers">Markers (labels for organising/filtering)</label>
+          <input id="g-markers" type="text" placeholder="cosplay street portrait…" bind:value={markersInput} />
+          <TagSuggestions tags={knownMarkers} current={markersInput} onpick={addMarker} />
+          <span class="muted">Not posted — used to filter groups (e.g. on the Drafts page).</span>
         </div>
         <label class="row" style="gap: 0.5rem; font-weight: 500;">
           <input type="checkbox" bind:checked={editing.isActive} />

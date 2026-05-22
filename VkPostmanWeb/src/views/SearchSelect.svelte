@@ -1,36 +1,54 @@
 <script lang="ts">
   import { ChevronDown, Check } from '@lucide/svelte';
 
-  interface Tpl { id?: number; name: string; }
+  export interface SearchItem { id?: number; label: string; sub?: string; }
+
   interface Props {
     value: number | undefined;
-    templates: Tpl[];
+    items: SearchItem[];
     onchange: (id: number | undefined) => void;
     id?: string;
+    /** Text on the closed trigger when nothing is selected. */
+    triggerPlaceholder?: string;
+    /** Placeholder inside the search box. */
+    searchPlaceholder?: string;
+    /** Show the "— none —" option (clears the value). */
+    allowNone?: boolean;
+    noneLabel?: string;
   }
-  let { value, templates, onchange, id }: Props = $props();
+  let {
+    value,
+    items,
+    onchange,
+    id,
+    triggerPlaceholder = '— none —',
+    searchPlaceholder = 'Search…',
+    allowNone = true,
+    noneLabel = '— none —',
+  }: Props = $props();
 
   let open = $state(false);
   let query = $state('');
   let rootEl: HTMLDivElement | undefined = $state();
   let searchEl: HTMLInputElement | undefined = $state();
 
-  const selectedName = $derived(
-    value != null ? (templates.find((t) => t.id === value)?.name ?? '(deleted)') : '',
+  const selectedLabel = $derived(
+    value != null ? (items.find((i) => i.id === value)?.label ?? '(deleted)') : '',
   );
 
   const filtered = $derived.by(() => {
     const q = query.trim().toLowerCase();
-    return q ? templates.filter((t) => t.name.toLowerCase().includes(q)) : templates;
+    return q
+      ? items.filter((i) => i.label.toLowerCase().includes(q) || (i.sub ?? '').toLowerCase().includes(q))
+      : items;
   });
 
-  // Focus the search box when the popup opens.
   $effect(() => {
     if (open) searchEl?.focus();
   });
 
-  function choose(tid: number | undefined) {
-    onchange(tid);
+  function choose(itemId: number | undefined) {
+    onchange(itemId);
     open = false;
     query = '';
   }
@@ -49,7 +67,7 @@
     aria-expanded={open}
     onclick={() => { open = !open; query = ''; }}
   >
-    <span class:placeholder={value == null}>{value == null ? '— none —' : selectedName}</span>
+    <span class:placeholder={value == null}>{value == null ? triggerPlaceholder : selectedLabel}</span>
     <ChevronDown size={16} />
   </button>
 
@@ -59,7 +77,7 @@
         bind:this={searchEl}
         class="ts-search"
         type="text"
-        placeholder="Search templates…"
+        placeholder={searchPlaceholder}
         bind:value={query}
         onkeydown={(e) => {
           if (e.key === 'Escape') { open = false; }
@@ -67,22 +85,25 @@
         }}
       />
       <ul class="ts-list" role="listbox">
-        <li>
-          <button type="button" class="ts-opt" onclick={() => choose(undefined)}>
-            <span class="ts-check">{#if value == null}<Check size={14} />{/if}</span>
-            <span class="muted">— none —</span>
-          </button>
-        </li>
-        {#each filtered as t (t.id)}
+        {#if allowNone}
           <li>
-            <button type="button" class="ts-opt" onclick={() => choose(t.id)}>
-              <span class="ts-check">{#if value === t.id}<Check size={14} />{/if}</span>
-              <span>{t.name}</span>
+            <button type="button" class="ts-opt" onclick={() => choose(undefined)}>
+              <span class="ts-check">{#if value == null}<Check size={14} />{/if}</span>
+              <span class="muted">{noneLabel}</span>
+            </button>
+          </li>
+        {/if}
+        {#each filtered as it (it.id)}
+          <li>
+            <button type="button" class="ts-opt" onclick={() => choose(it.id)}>
+              <span class="ts-check">{#if value === it.id}<Check size={14} />{/if}</span>
+              <span class="ts-label">{it.label}</span>
+              {#if it.sub}<span class="muted ts-sub">{it.sub}</span>{/if}
             </button>
           </li>
         {/each}
         {#if filtered.length === 0}
-          <li class="ts-empty muted">No templates match “{query}”.</li>
+          <li class="ts-empty muted">No matches{query ? ` for “${query}”` : ''}.</li>
         {/if}
       </ul>
     </div>
@@ -122,13 +143,7 @@
     padding: 4px;
   }
   .ts-search { margin-bottom: 4px; }
-  .ts-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    max-height: 240px;
-    overflow: auto;
-  }
+  .ts-list { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow: auto; }
   .ts-opt {
     display: flex;
     align-items: center;
@@ -145,6 +160,8 @@
     cursor: pointer;
   }
   .ts-opt:hover { background: var(--vk-hover); }
-  .ts-check { width: 16px; display: inline-flex; color: var(--vk-blue); }
+  .ts-check { width: 16px; flex-shrink: 0; display: inline-flex; color: var(--vk-blue); }
+  .ts-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ts-sub { margin-left: auto; font-size: 0.78rem; }
   .ts-empty { padding: 0.5rem; font-size: 0.85rem; }
 </style>

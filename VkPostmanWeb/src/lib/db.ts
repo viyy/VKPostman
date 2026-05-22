@@ -149,6 +149,7 @@ export async function createGroup(screenName: string): Promise<number> {
     screenName: cleaned,
     displayName: cleaned || 'New group',
     mandatoryTags: [],
+    markers: [],
     isActive: true,
     notes: '',
     createdAt: new Date(),
