@@ -78,6 +78,7 @@ export async function createDraft(): Promise<number> {
     placeholderValues: {},
     themeTags: [],
     targetGroupIds: [],
+    postedGroupIds: [],
     createdAt: now,
     updatedAt: now,
   });

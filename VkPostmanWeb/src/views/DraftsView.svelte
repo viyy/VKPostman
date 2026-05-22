@@ -16,12 +16,15 @@
     type TargetGroup,
   } from '../lib/types';
   import { nav } from '../lib/nav.svelte';
+  import { createAutosave, type AutosaveStatus } from '../lib/autosave';
 
   /** Collapsed state for the Target groups block (persists across reloads). */
   let groupsCollapsed = $state(localStorage.getItem('vkp.draftGroupsCollapsed') === '1');
   $effect(() => {
     localStorage.setItem('vkp.draftGroupsCollapsed', groupsCollapsed ? '1' : '0');
   });
+
+  let saveStatus = $state<AutosaveStatus>('idle');
 
   // ---- Live data -----------------------------------------------------------
   const draftsQuery    = liveQuery(() => db.drafts.orderBy('updatedAt').reverse().toArray());
@@ -73,8 +76,13 @@
         placeholderValues: { ...d.placeholderValues },
         themeTags: [...d.themeTags],
         targetGroupIds: [...d.targetGroupIds],
+        // Older drafts predate posted tracking — default to empty.
+        postedGroupIds: [...(d.postedGroupIds ?? [])],
       };
       themeTagsInput = draft.themeTags.join(' ');
+      // Adopt the freshly-loaded draft as the autosave baseline so merely
+      // opening it doesn't count as a change.
+      autosave.reset();
     })();
   });
 
@@ -82,6 +90,26 @@
   $effect(() => {
     if (currentId == null && drafts && drafts.length > 0) {
       currentId = drafts[0].id!;
+    }
+  });
+
+  // ---- Autosave ------------------------------------------------------------
+  const autosave = createAutosave<PostDraft>({
+    get: () => draft,
+    save: async (snap) => { await saveDraft(snap); },
+    snapshot: (v) => $state.snapshot(v) as PostDraft,
+    delayMs: 500,
+    onStatus: (s) => (saveStatus = s),
+  });
+  $effect(autosave.watch);
+
+  const statusLabel = $derived.by(() => {
+    switch (saveStatus) {
+      case 'dirty':  return '…';
+      case 'saving': return 'Saving…';
+      case 'saved':  return '✓ Saved';
+      case 'error':  return '⚠ Save failed';
+      default:       return '';
     }
   });
 
@@ -129,16 +157,25 @@
     });
   });
 
+  /** Split rendered cards into not-yet-posted and posted, driven by draft.postedGroupIds. */
+  const activeRenders = $derived(
+    renders.filter((r) => !(draft?.postedGroupIds ?? []).includes(r.group.id!))
+  );
+  const postedRenders = $derived(
+    renders.filter((r) => (draft?.postedGroupIds ?? []).includes(r.group.id!))
+  );
+
   // ---- Commands ------------------------------------------------------------
   async function newDraft() {
+    await autosave.flush();
     const id = await createDraft();
     currentId = id;
   }
 
-  async function save() {
-    if (!draft) return;
-    // draft.themeTags is already kept in sync with themeTagsInput by the effect above.
-    await saveDraft($state.snapshot(draft) as typeof draft);
+  /** Switch drafts — flush the current one first so its pending save lands. */
+  async function selectDraft(id: number) {
+    await autosave.flush();
+    currentId = id;
   }
 
   async function remove() {
@@ -146,6 +183,18 @@
     if (!confirm('Delete this draft?')) return;
     await deleteDraft(draft.id);
     currentId = null;
+  }
+
+  function markPosted(groupId: number) {
+    if (!draft) return;
+    if (!draft.postedGroupIds.includes(groupId)) {
+      draft.postedGroupIds = [...draft.postedGroupIds, groupId];
+    }
+  }
+
+  function unmarkPosted(groupId: number) {
+    if (!draft) return;
+    draft.postedGroupIds = draft.postedGroupIds.filter((id) => id !== groupId);
   }
 
   function toggleGroup(g: TargetGroup) {
@@ -224,7 +273,7 @@
           <button
             class="list-item"
             class:active={currentId === d.id}
-            onclick={() => (currentId = d.id ?? null)}
+            onclick={() => d.id != null && selectDraft(d.id)}
           >
             <strong>{d.title}</strong>
             <span class="meta">{new Date(d.updatedAt).toLocaleString()}</span>
@@ -250,7 +299,7 @@
             <span class="pill" style={ready ? '' : 'background:#eef0f3; color:var(--vk-text-secondary);'}>
               {ready ? 'ready to copy' : 'incomplete'}
             </span>
-            <button class="btn btn-primary btn-sm" onclick={save}>💾 Save</button>
+            <span class="muted" style="min-width: 5rem; text-align: right;">{statusLabel}</span>
             <button class="btn btn-danger btn-sm" onclick={remove}>🗑 Delete</button>
           </div>
         </div>
@@ -382,18 +431,45 @@
   <!-- ==== Per-group output ==== -->
   <section>
     <div class="card-header" style="padding-left: 4px;">
-      <h3 style="margin: 0;">Per-group output</h3>
+      <h3 style="margin: 0;">To post</h3>
+      {#if postedRenders.length > 0}
+        <span class="muted">{postedRenders.length} posted</span>
+      {/if}
     </div>
+
     {#if renders.length === 0}
       <p class="muted">Pick one or more target groups on the left to see rendered posts.</p>
+    {:else if activeRenders.length === 0}
+      <p class="muted">All selected groups are marked posted. 🎉</p>
     {:else}
-      {#each renders as r (r.group.id)}
+      {#each activeRenders as r (r.group.id)}
         <div class="card">
           <div class="card-header">
             <strong>{r.group.displayName}</strong>
             <div class="row">
               <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}>📋 Copy</button>
               <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}>🌐 Open vk.com</button>
+              <button class="btn btn-primary btn-sm" onclick={() => markPosted(r.group.id!)}>✓ Posted</button>
+            </div>
+          </div>
+          <div class="rendered">{r.text}</div>
+        </div>
+      {/each}
+    {/if}
+
+    <!-- Posted block -->
+    {#if postedRenders.length > 0}
+      <div class="card-header" style="padding-left: 4px; margin-top: 1rem;">
+        <h3 style="margin: 0;">✓ Posted</h3>
+      </div>
+      {#each postedRenders as r (r.group.id)}
+        <div class="card posted-card">
+          <div class="card-header">
+            <strong>{r.group.displayName}</strong>
+            <div class="row">
+              <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}>📋 Copy</button>
+              <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}>🌐 Open vk.com</button>
+              <button class="btn btn-ghost btn-sm" onclick={() => unmarkPosted(r.group.id!)}>↩ Unmark</button>
             </div>
           </div>
           <div class="rendered">{r.text}</div>
@@ -402,4 +478,14 @@
     {/if}
   </section>
 </div>
+
+<style>
+  /* Dim posted cards so the eye lands on what's still to do. */
+  .posted-card {
+    opacity: 0.7;
+  }
+  .posted-card .rendered {
+    max-height: 120px;
+  }
+</style>
 

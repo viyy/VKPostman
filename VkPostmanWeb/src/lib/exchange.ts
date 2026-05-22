@@ -146,14 +146,17 @@ export async function importFromJson(parsed: unknown): Promise<ImportSummary> {
       }
 
       // --- drafts ---
-      for (const d of payload.drafts) {
-        const { id: _omit, ...rest } = d as PostDraft & { id?: number };
-        const remappedTargets = (rest.targetGroupIds ?? [])
+      const remapGroupIds = (ids: number[] | undefined) =>
+        (ids ?? [])
           .map((oid) => groupIdMap.get(oid))
           .filter((v): v is number => v != null);
+
+      for (const d of payload.drafts) {
+        const { id: _omit, ...rest } = d as PostDraft & { id?: number };
         await db.drafts.add({
           ...rest,
-          targetGroupIds: remappedTargets,
+          targetGroupIds: remapGroupIds(rest.targetGroupIds),
+          postedGroupIds: remapGroupIds(rest.postedGroupIds),
           createdAt: coerceDate(rest.createdAt),
           updatedAt: coerceDate(rest.updatedAt),
         } as PostDraft);
@@ -294,6 +297,8 @@ function assertDraft(x: unknown, i: number): PostDraft {
     placeholderValues: asStringDict(r.placeholderValues),
     themeTags: asStringArray(r.themeTags),
     targetGroupIds: asArray(r.targetGroupIds).map((v) => Number(v)),
+    // Older exports (and v1 files) won't have this — default to empty.
+    postedGroupIds: asArray(r.postedGroupIds).map((v) => Number(v)),
     createdAt: coerceDate(r.createdAt),
     updatedAt: coerceDate(r.updatedAt),
   };
