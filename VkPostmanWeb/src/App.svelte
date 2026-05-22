@@ -105,7 +105,7 @@
     <div class="io-banner {ioMessage.ok ? 'ok' : 'err'}">{ioMessage.text}</div>
   {/if}
 
-  <nav class="tabs" role="tablist">
+  <div class="tabs" role="tablist" aria-label="Sections">
     <button
       class="tab"
       class:active={nav.tab === 'drafts'}
@@ -134,7 +134,7 @@
       aria-selected={nav.tab === 'groups'}
       onclick={() => (nav.tab = 'groups')}
     >👥 Groups</button>
-  </nav>
+  </div>
 
   <main class="content">
     {#if nav.tab === 'drafts'}

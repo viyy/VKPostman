@@ -122,11 +122,11 @@ export async function importFromJson(parsed: unknown): Promise<ImportSummary> {
       for (const t of payload.templates) {
         const oldId = t.id;
         const { id: _omit, ...rest } = t as PostTemplate & { id?: number };
-        const newId = await db.templates.add({
+        const newId = (await db.templates.add({
           ...rest,
           createdAt: coerceDate(rest.createdAt),
           updatedAt: coerceDate(rest.updatedAt),
-        } as PostTemplate);
+        } as PostTemplate))!;
         if (oldId != null) templateIdMap.set(oldId, newId);
       }
 
@@ -137,11 +137,11 @@ export async function importFromJson(parsed: unknown): Promise<ImportSummary> {
         const { id: _omit, ...rest } = g as TargetGroup & { id?: number };
         const remappedTemplateId =
           rest.postTemplateId != null ? templateIdMap.get(rest.postTemplateId) : undefined;
-        const newId = await db.groups.add({
+        const newId = (await db.groups.add({
           ...rest,
           postTemplateId: remappedTemplateId,
           createdAt: coerceDate(rest.createdAt),
-        } as TargetGroup);
+        } as TargetGroup))!;
         if (oldId != null) groupIdMap.set(oldId, newId);
       }
 

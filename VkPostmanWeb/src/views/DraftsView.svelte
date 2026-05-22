@@ -387,10 +387,12 @@
             {#each placeholders as u (u.key)}
               {@const def = u.definition}
               <div class="stack">
-                <label>
+                <!-- Not a <label>: a WikiLink field has two inputs, so this is a
+                     group heading, not a single-control label. -->
+                <div class="field-label">
                   {def?.displayName ?? u.key}
                   <span class="muted">&nbsp;({typeLabel(def?.type ?? PlaceholderType.Text)})</span>
-                </label>
+                </div>
 
                 {#if def?.type === PlaceholderType.WikiLink}
                   <div class="row" style="gap: 0.5rem;">
@@ -486,6 +488,12 @@
   }
   .posted-card .rendered {
     max-height: 120px;
+  }
+  /* Field-group heading (mirrors the global <label> look). */
+  .field-label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 4px;
   }
 </style>
 
