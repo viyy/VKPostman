@@ -60,6 +60,11 @@ export interface PostDraft {
   placeholderValues: Record<string, string>;
   /** Tags common to every selected group; prepended by renderer. */
   themeTags: string[];
+  /**
+   * Filenames / paths of images to attach by hand when posting. The app stores
+   * the text only (browsers can't read real file paths) — a reminder checklist.
+   */
+  imageNotes?: string[];
   targetGroupIds: number[];
   /** Group ids the user has marked as already posted (per-draft progress tracking). */
   postedGroupIds: number[];

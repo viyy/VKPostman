@@ -3,6 +3,7 @@
   import TemplatesView from './views/TemplatesView.svelte';
   import GroupsView from './views/GroupsView.svelte';
   import PlaceholdersView from './views/PlaceholdersView.svelte';
+  import StatsView from './views/StatsView.svelte';
   import { downloadExport, exportAll, importFromFile } from './lib/exchange';
   import { nav, type Tab } from './lib/nav.svelte';
   import { undo } from './lib/undo.svelte';
@@ -151,6 +152,13 @@
       aria-selected={nav.tab === 'groups'}
       onclick={() => (nav.tab = 'groups')}
     >👥 Groups</button>
+    <button
+      class="tab"
+      class:active={nav.tab === 'stats'}
+      role="tab"
+      aria-selected={nav.tab === 'stats'}
+      onclick={() => (nav.tab = 'stats')}
+    >📊 Stats</button>
   </div>
 
   <main class="content">
@@ -160,8 +168,10 @@
       <TemplatesView />
     {:else if nav.tab === 'placeholders'}
       <PlaceholdersView />
-    {:else}
+    {:else if nav.tab === 'groups'}
       <GroupsView />
+    {:else}
+      <StatsView />
     {/if}
   </main>
 

@@ -89,6 +89,44 @@
     themeTagsInput = cur ? `${cur} ${tag}` : tag;
   }
 
+  // ---- Image attachment notes (filenames/paths only) -----------------------
+  let imageNoteInput = $state('');
+  let dragOver = $state(false);
+
+  function addImageNotes(names: string[]) {
+    if (!draft) return;
+    const cleaned = names.map((n) => n.trim()).filter(Boolean);
+    if (cleaned.length === 0) return;
+    const existing = new Set(draft.imageNotes ?? []);
+    const merged = [...(draft.imageNotes ?? [])];
+    for (const n of cleaned) if (!existing.has(n)) merged.push(n);
+    draft.imageNotes = merged;
+  }
+
+  function addImageNoteFromInput() {
+    if (!imageNoteInput.trim()) return;
+    addImageNotes([imageNoteInput]);
+    imageNoteInput = '';
+  }
+
+  function removeImageNote(name: string) {
+    if (!draft) return;
+    draft.imageNotes = (draft.imageNotes ?? []).filter((n) => n !== name);
+  }
+
+  function onImageDrop(e: DragEvent) {
+    e.preventDefault();
+    dragOver = false;
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      addImageNotes([...files].map((f) => f.name));
+    } else {
+      // Plain-text drops (e.g. a path dragged from another field).
+      const text = e.dataTransfer?.getData('text');
+      if (text) addImageNotes(text.split(/[\r\n]+/));
+    }
+  }
+
   // ---- Selection -----------------------------------------------------------
   let currentId = $state<number | null>(null);
   let draft = $state<PostDraft | null>(null);
@@ -114,6 +152,7 @@
         // Older drafts predate posted tracking — default to empty.
         postedGroupIds: [...(d.postedGroupIds ?? [])],
         postedAt: { ...(d.postedAt ?? {}) },
+        imageNotes: [...(d.imageNotes ?? [])],
       };
       themeTagsInput = draft.themeTags.join(' ');
       // Adopt the freshly-loaded draft as the autosave baseline so merely
@@ -529,6 +568,48 @@
             <input id="d-tags" type="text" bind:value={themeTagsInput} />
             <TagSuggestions tags={knownTags} current={themeTagsInput} onpick={addTag} />
           </div>
+
+          <div class="stack">
+            <div class="field-label">
+              Images to attach
+              <span class="muted">&nbsp;(filenames/paths — a manual checklist, files aren't stored)</span>
+            </div>
+            <div
+              class="dropzone"
+              class:drag-over={dragOver}
+              role="button"
+              tabindex="0"
+              ondragover={(e) => { e.preventDefault(); dragOver = true; }}
+              ondragleave={() => (dragOver = false)}
+              ondrop={onImageDrop}
+            >
+              Drop image files here to add their names
+            </div>
+            <div class="row" style="gap: 0.4rem;">
+              <input
+                type="text"
+                class="grow"
+                placeholder="…or type a filename/path and press Enter"
+                bind:value={imageNoteInput}
+                onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addImageNoteFromInput(); } }}
+              />
+              <button class="btn btn-outline btn-sm" onclick={addImageNoteFromInput}>+ Add</button>
+            </div>
+            {#if (draft.imageNotes ?? []).length > 0}
+              <ul class="image-list">
+                {#each draft.imageNotes ?? [] as name (name)}
+                  <li>
+                    <span class="img-name">🖼 {name}</span>
+                    <button
+                      class="img-remove"
+                      aria-label={`Remove ${name}`}
+                      onclick={() => removeImageNote(name)}
+                    >✕</button>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
         </div>
         {/if}
       </div>
@@ -744,6 +825,56 @@
     font-weight: 500;
     margin-bottom: 4px;
   }
+
+  /* Image attachment checklist. */
+  .dropzone {
+    border: 1.5px dashed var(--vk-border-strong);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem;
+    text-align: center;
+    color: var(--vk-text-secondary);
+    font-size: 0.85rem;
+    transition: background 120ms, border-color 120ms, color 120ms;
+  }
+  .dropzone.drag-over {
+    border-color: var(--vk-blue);
+    background: var(--vk-accent);
+    color: var(--vk-blue);
+  }
+  .image-list {
+    list-style: none;
+    margin: 0.25rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .image-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--vk-border);
+    border-radius: var(--radius-sm);
+  }
+  .image-list .img-name {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-family: 'JetBrains Mono', Consolas, monospace;
+    font-size: 0.82rem;
+  }
+  .img-remove {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--vk-text-secondary);
+    cursor: pointer;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+  }
+  .img-remove:hover { background: var(--vk-danger-bg); color: var(--vk-danger); }
 
   /* Validation issues panel on the Draft details card. */
   .issues {
