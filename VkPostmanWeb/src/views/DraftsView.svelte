@@ -320,6 +320,18 @@
     window.open(`https://vk.com/${g.screenName}`, '_blank', 'noopener');
   }
 
+  /**
+   * Copy the next not-yet-posted group's rendered text and open its vk.com
+   * page — the core "work through the queue" action. Copy first (while the
+   * document still has focus, as the Clipboard API requires) then open.
+   */
+  async function copyNextAndOpen() {
+    const next = activeRenders[0];
+    if (!next) return;
+    await copyText(next.text);
+    openGroup(next.group);
+  }
+
   // WikiLink value split helpers — the packed value lives in placeholderValues.
   function wikiTarget(key: string): string {
     return splitWikiLink(draft?.placeholderValues[key]).target;
@@ -568,19 +580,29 @@
 
   <!-- ==== Per-group output ==== -->
   <section>
-    <button
-      type="button"
-      class="collapse-header"
-      style="padding-left: 4px;"
-      aria-expanded={!toPostCollapsed}
-      onclick={() => (toPostCollapsed = !toPostCollapsed)}
-    >
-      <span class="collapse-chevron" class:collapsed={toPostCollapsed}>▾</span>
-      <h3 style="margin: 0;">To post</h3>
-      {#if postedRenders.length > 0}
-        <span class="muted" style="margin-left: auto;">{postedRenders.length} posted</span>
-      {/if}
-    </button>
+    <div class="card-header" style="padding-left: 4px;">
+      <button
+        type="button"
+        class="collapse-header"
+        style="width: auto; margin-bottom: 0;"
+        aria-expanded={!toPostCollapsed}
+        onclick={() => (toPostCollapsed = !toPostCollapsed)}
+      >
+        <span class="collapse-chevron" class:collapsed={toPostCollapsed}>▾</span>
+        <h3 style="margin: 0;">To post</h3>
+      </button>
+      <div class="row">
+        {#if postedRenders.length > 0}
+          <span class="muted">{postedRenders.length} posted</span>
+        {/if}
+        <button
+          class="btn btn-primary btn-sm"
+          disabled={activeRenders.length === 0}
+          title="Copy the next unposted group's text and open its vk.com page"
+          onclick={copyNextAndOpen}
+        >📋 Copy next &amp; open</button>
+      </div>
+    </div>
 
     {#if postedSummary && postedSummary.total > 0}
       <p class="muted" style="margin: -0.2rem 0 0.6rem; padding-left: 4px;">
