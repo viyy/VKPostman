@@ -6,6 +6,7 @@
   import { knownTagsQuery } from '../lib/tags';
   import { undo } from '../lib/undo.svelte';
   import TagSuggestions from './TagSuggestions.svelte';
+  import { Plus, Pin, Trash2 } from '@lucide/svelte';
 
   // Live IndexedDB queries — re-run automatically when the data changes.
   const groupsQuery = liveQuery(() => db.groups.orderBy('displayName').toArray());
@@ -122,7 +123,7 @@
   <aside class="card">
     <div class="card-header">
       <h3 style="margin: 0;">Groups</h3>
-      <button class="btn btn-primary btn-sm" onclick={addNew}>+ Add</button>
+      <button class="btn btn-primary btn-sm" onclick={addNew}><Plus size={15} /> Add</button>
     </div>
 
     {#if !groups}
@@ -147,7 +148,7 @@
               class:active={editing?.id === g.id}
               onclick={() => edit(g)}
             >
-              <strong>{#if g.pinned}<span title="Pinned">📌 </span>{/if}{g.displayName}</strong>
+              <strong>{#if g.pinned}<Pin size={13} class="inline-ico" />{/if}{g.displayName}</strong>
               <span class="meta">
                 @{g.screenName} · template: <em>{templateName(g.postTemplateId)}</em>
               </span>
@@ -225,7 +226,7 @@
             checked={editing.pinned ?? false}
             onchange={(e) => (editing!.pinned = (e.currentTarget as HTMLInputElement).checked)}
           />
-          <span>📌 Pin to top</span>
+          <span style="display: inline-flex; align-items: center; gap: 0.3rem;"><Pin size={15} /> Pin to top</span>
         </label>
         <div class="stack">
           <label for="g-notes">Notes</label>
@@ -235,7 +236,7 @@
         {#if editing.id != null}
           <div>
             <button class="btn btn-danger btn-sm" onclick={() => removeGroup(editing!)}>
-              🗑 Delete group
+              <Trash2 size={15} /> Delete group
             </button>
           </div>
         {/if}

@@ -3,6 +3,7 @@
   import { db } from '../lib/db';
   import { nav } from '../lib/nav.svelte';
   import type { PostDraft, PostTemplate, TargetGroup } from '../lib/types';
+  import { FileText, LayoutTemplate, Users } from '@lucide/svelte';
 
   interface Props {
     onclose: () => void;
@@ -60,7 +61,7 @@
           type: 'draft',
           id: d.id!,
           title: d.title,
-          subtitle: imgHit ? `🖼 image match · ${(d.imageNotes ?? []).join(', ')}` : 'draft',
+          subtitle: imgHit ? `image match · ${(d.imageNotes ?? []).join(', ')}` : 'draft',
         });
       }
       if (out.filter((r) => r.type === 'draft').length >= LIMIT) break;
@@ -81,7 +82,7 @@
     return out;
   });
 
-  const badge = { draft: '📝', template: '📄', group: '👥' } as const;
+  const badge = { draft: FileText, template: LayoutTemplate, group: Users };
 
   function open(r: Result) {
     if (r.type === 'draft') nav.openDraft(r.id);
@@ -120,9 +121,10 @@
     {:else if results.length > 0}
       <ul class="results">
         {#each results as r (r.type + r.id)}
+          {@const Badge = badge[r.type]}
           <li>
             <button class="result" onclick={() => open(r)}>
-              <span class="r-badge">{badge[r.type]}</span>
+              <span class="r-badge"><Badge size={18} /></span>
               <span class="r-body">
                 <span class="r-title">{r.title}</span>
                 <span class="r-sub muted">{r.subtitle}</span>

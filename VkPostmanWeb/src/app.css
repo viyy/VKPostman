@@ -310,6 +310,9 @@ label {
 }
 
 .topbar .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   font-weight: 700;
   font-size: 1.05rem;
   letter-spacing: 0.2px;
@@ -330,6 +333,9 @@ label {
   appearance: none;
   border: none;
   background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   padding: 0.7rem 0.95rem;
   font-family: inherit;
   font-size: 0.92rem;
@@ -374,6 +380,13 @@ label {
 .search-input {
   margin-bottom: 0.6rem;
 }
+
+/* ===== Inline icons sitting next to text ===== */
+.inline-ico {
+  vertical-align: -0.15em;
+  margin-right: 0.15rem;
+}
+.done-ico { color: var(--vk-success); }
 
 /* ===== Field-group heading (mirrors the <label> look) ===== */
 .field-label {

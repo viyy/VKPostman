@@ -8,6 +8,7 @@
     type SubsetSelection,
   } from '../lib/exchange';
   import type { PostDraft, PostTemplate, TargetGroup } from '../lib/types';
+  import { Upload, Download } from '@lucide/svelte';
 
   interface Props {
     onclose: () => void;
@@ -100,10 +101,10 @@
       <h4 style="margin: 0 0 0.3rem;">Import &amp; merge</h4>
       <p class="muted" style="margin: 0 0 0.5rem;">
         Add the records from a file <strong>alongside</strong> what you already have
-        (nothing is overwritten). Use the top-bar ⬆️ button instead to replace everything.
+        (nothing is overwritten). Use the top-bar import button instead to replace everything.
       </p>
       <button class="btn btn-outline btn-sm" onclick={() => importInput?.click()}>
-        ⬆️ Choose file to merge…
+        <Upload size={15} /> Choose file to merge…
       </button>
       <input
         bind:this={importInput}
@@ -157,7 +158,7 @@
 
       <div class="row" style="margin-top: 0.6rem; justify-content: flex-end;">
         <button class="btn btn-primary btn-sm" disabled={selectedCount === 0} onclick={doExportSubset}>
-          ⬇️ Export {selectedCount} selected
+          <Download size={15} /> Export {selectedCount} selected
         </button>
       </div>
     </section>
