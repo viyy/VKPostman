@@ -1,8 +1,7 @@
 <script lang="ts">
   import { liveQuery } from 'dexie';
-  import { db, createDraft, saveDraft, deleteDraft } from '../lib/db';
+  import { db, createDraft, duplicateDraft, saveDraft, deleteDraft } from '../lib/db';
   import {
-    isDraftReady,
     packWikiLink,
     renderDraftForGroup,
     splitWikiLink,
@@ -17,6 +16,9 @@
   } from '../lib/types';
   import { nav } from '../lib/nav.svelte';
   import { createAutosave, type AutosaveStatus } from '../lib/autosave';
+  import { knownTagsQuery } from '../lib/tags';
+  import { undo } from '../lib/undo.svelte';
+  import TagSuggestions from './TagSuggestions.svelte';
 
   /** Collapsed state for the collapsible blocks (persists across reloads). */
   let groupsCollapsed  = $state(localStorage.getItem('vkp.draftGroupsCollapsed') === '1');
@@ -38,16 +40,28 @@
 
   let saveStatus = $state<AutosaveStatus>('idle');
 
+  // ---- Draft list search + status filter -----------------------------------
+  type StatusFilter = 'all' | 'active' | 'posted';
+  let search = $state('');
+  let statusFilter = $state<StatusFilter>(
+    (localStorage.getItem('vkp.draftStatusFilter') as StatusFilter | null) ?? 'all',
+  );
+  $effect(() => {
+    localStorage.setItem('vkp.draftStatusFilter', statusFilter);
+  });
+
   // ---- Live data -----------------------------------------------------------
   const draftsQuery    = liveQuery(() => db.drafts.orderBy('updatedAt').reverse().toArray());
   const groupsQuery    = liveQuery(() => db.groups.orderBy('displayName').toArray());
   const templatesQuery = liveQuery(() => db.templates.toArray());
   const libraryQuery   = liveQuery(() => db.placeholders.toArray());
+  const tagsQuery      = knownTagsQuery();
 
   let drafts    = $state<PostDraft[] | undefined>(undefined);
   let groups    = $state<TargetGroup[]>([]);
   let templates = $state<PostTemplate[]>([]);
   let library   = $state<PlaceholderDefinition[]>([]);
+  let knownTags = $state<string[]>([]);
 
   $effect(() => {
     const s = draftsQuery.subscribe({ next: (v) => (drafts = v) });
@@ -65,6 +79,15 @@
     const s = libraryQuery.subscribe({ next: (v) => (library = v) });
     return () => s.unsubscribe();
   });
+  $effect(() => {
+    const s = tagsQuery.subscribe({ next: (v) => (knownTags = v) });
+    return () => s.unsubscribe();
+  });
+
+  function addTag(tag: string) {
+    const cur = themeTagsInput.trim();
+    themeTagsInput = cur ? `${cur} ${tag}` : tag;
+  }
 
   // ---- Selection -----------------------------------------------------------
   let currentId = $state<number | null>(null);
@@ -90,6 +113,7 @@
         targetGroupIds: [...d.targetGroupIds],
         // Older drafts predate posted tracking — default to empty.
         postedGroupIds: [...(d.postedGroupIds ?? [])],
+        postedAt: { ...(d.postedAt ?? {}) },
       };
       themeTagsInput = draft.themeTags.join(' ');
       // Adopt the freshly-loaded draft as the autosave baseline so merely
@@ -153,7 +177,30 @@
     unionedPlaceholders(selectedGroups, templatesById, libraryByKey)
   );
 
-  const ready = $derived(draft ? isDraftReady(draft, selectedGroups) : false);
+  // Detailed readiness checks — what (if anything) is still missing.
+  const validationIssues = $derived.by(() => {
+    if (!draft) return [] as string[];
+    const issues: string[] = [];
+    if (selectedGroups.length === 0) issues.push('No target groups selected.');
+    for (const g of selectedGroups) {
+      if (g.postTemplateId == null) issues.push(`${g.displayName}: no template assigned.`);
+    }
+    for (const u of placeholders) {
+      const def = u.definition;
+      const raw = draft.placeholderValues[u.key] ?? '';
+      const filled =
+        def?.type === PlaceholderType.WikiLink
+          ? splitWikiLink(raw).target.trim().length > 0
+          : raw.trim().length > 0;
+      const hasDefault = !!(def?.defaultValue && def.defaultValue.trim());
+      if (!filled && !hasDefault) {
+        issues.push(`Missing value: ${def?.displayName ?? u.key} (${u.usedByGroups.join(', ')})`);
+      }
+    }
+    return issues;
+  });
+
+  const ready = $derived(draft != null && validationIssues.length === 0);
 
   // Per-group rendered output, re-computed whenever relevant state changes.
   const renders = $derived.by(() => {
@@ -177,6 +224,57 @@
     renders.filter((r) => (draft?.postedGroupIds ?? []).includes(r.group.id!))
   );
 
+  // Posted summary for the open draft: "posted to N/M groups, last on <date>".
+  const postedSummary = $derived.by(() => {
+    if (!draft) return null;
+    const targets = draft.targetGroupIds;
+    const postedIds = targets.filter((id) => draft!.postedGroupIds.includes(id));
+    let last: Date | null = null;
+    for (const id of postedIds) {
+      const iso = draft.postedAt?.[id];
+      if (!iso) continue;
+      const dt = new Date(iso);
+      if (!last || dt > last) last = dt;
+    }
+    return { total: targets.length, posted: postedIds.length, last };
+  });
+
+  // ---- Draft list filtering (search + status) ------------------------------
+  const groupsById = $derived(new Map(groups.map((g) => [g.id!, g])));
+
+  /** A draft counts as "posted" once it has targets and all are marked posted. */
+  function isFullyPosted(d: PostDraft): boolean {
+    const targets = d.targetGroupIds ?? [];
+    if (targets.length === 0) return false;
+    const posted = d.postedGroupIds ?? [];
+    return targets.every((id) => posted.includes(id));
+  }
+
+  const filteredDrafts = $derived.by(() => {
+    const list = drafts ?? [];
+    const q = search.trim().toLowerCase();
+    const matched = list.filter((d) => {
+      // Status filter.
+      if (statusFilter === 'posted' && !isFullyPosted(d)) return false;
+      if (statusFilter === 'active' && isFullyPosted(d)) return false;
+      // Text search: title, common text, theme tags, target group name/alias.
+      if (!q) return true;
+      if (d.title.toLowerCase().includes(q)) return true;
+      if (d.commonText.toLowerCase().includes(q)) return true;
+      if (d.themeTags.some((t) => t.toLowerCase().includes(q))) return true;
+      return (d.targetGroupIds ?? []).some((id) => {
+        const g = groupsById.get(id);
+        return (
+          !!g &&
+          (g.displayName.toLowerCase().includes(q) ||
+            g.screenName.toLowerCase().includes(q))
+        );
+      });
+    });
+    // Pinned drafts float to the top; the query already orders by recency.
+    return [...matched].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+  });
+
   // ---- Commands ------------------------------------------------------------
   async function newDraft() {
     await autosave.flush();
@@ -192,9 +290,25 @@
 
   async function remove() {
     if (!draft?.id) return;
-    if (!confirm('Delete this draft?')) return;
+    const snap = $state.snapshot(draft) as PostDraft;
     await deleteDraft(draft.id);
     currentId = null;
+    undo.offer(`Deleted draft “${snap.title}”`, async () => {
+      await db.drafts.put(snap);
+      currentId = snap.id ?? null;
+    });
+  }
+
+  function togglePin() {
+    if (!draft) return;
+    draft.pinned = !draft.pinned;
+  }
+
+  /** Clone the current draft (keeps content, resets posted progress). */
+  async function duplicate() {
+    if (!draft?.id) return;
+    await autosave.flush();
+    currentId = await duplicateDraft(draft.id);
   }
 
   function markPosted(groupId: number) {
@@ -202,11 +316,28 @@
     if (!draft.postedGroupIds.includes(groupId)) {
       draft.postedGroupIds = [...draft.postedGroupIds, groupId];
     }
+    // Record/refresh the timestamp for this group.
+    draft.postedAt = { ...(draft.postedAt ?? {}), [groupId]: new Date().toISOString() };
   }
 
   function unmarkPosted(groupId: number) {
     if (!draft) return;
     draft.postedGroupIds = draft.postedGroupIds.filter((id) => id !== groupId);
+    if (draft.postedAt) {
+      const { [groupId]: _drop, ...rest } = draft.postedAt;
+      draft.postedAt = rest;
+    }
+  }
+
+  /** Human label for when a group was marked posted (or '' if unknown). */
+  function postedDateLabel(groupId: number): string {
+    const iso = draft?.postedAt?.[groupId];
+    if (!iso) return '';
+    return new Date(iso).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
   }
 
   function toggleGroup(g: TargetGroup) {
@@ -234,6 +365,18 @@
 
   function openGroup(g: TargetGroup) {
     window.open(`https://vk.com/${g.screenName}`, '_blank', 'noopener');
+  }
+
+  /**
+   * Copy the next not-yet-posted group's rendered text and open its vk.com
+   * page — the core "work through the queue" action. Copy first (while the
+   * document still has focus, as the Clipboard API requires) then open.
+   */
+  async function copyNextAndOpen() {
+    const next = activeRenders[0];
+    if (!next) return;
+    await copyText(next.text);
+    openGroup(next.group);
   }
 
   // WikiLink value split helpers — the packed value lives in placeholderValues.
@@ -280,18 +423,46 @@
     {:else if drafts.length === 0}
       <p class="muted">No drafts yet.</p>
     {:else}
-      <div class="list">
-        {#each drafts as d (d.id)}
-          <button
-            class="list-item"
-            class:active={currentId === d.id}
-            onclick={() => d.id != null && selectDraft(d.id)}
-          >
-            <strong>{d.title}</strong>
-            <span class="meta">{new Date(d.updatedAt).toLocaleString()}</span>
-          </button>
-        {/each}
+      <input
+        type="text"
+        class="search-input"
+        placeholder="Search title, text, group…"
+        bind:value={search}
+        aria-label="Search drafts"
+      />
+      <div class="seg" role="tablist" aria-label="Filter by status">
+        <button
+          class="seg-btn" class:active={statusFilter === 'all'}
+          onclick={() => (statusFilter = 'all')}
+        >All</button>
+        <button
+          class="seg-btn" class:active={statusFilter === 'active'}
+          onclick={() => (statusFilter = 'active')}
+        >In progress</button>
+        <button
+          class="seg-btn" class:active={statusFilter === 'posted'}
+          onclick={() => (statusFilter = 'posted')}
+        >Posted</button>
       </div>
+
+      {#if filteredDrafts.length === 0}
+        <p class="muted">No drafts match the current filter.</p>
+      {:else}
+        <div class="list">
+          {#each filteredDrafts as d (d.id)}
+            <button
+              class="list-item"
+              class:active={currentId === d.id}
+              onclick={() => d.id != null && selectDraft(d.id)}
+            >
+              <strong>
+                {#if d.pinned}<span title="Pinned">📌 </span>{/if}{#if isFullyPosted(d)}<span title="All target groups posted">✓ </span>{/if}{d.title}
+              </strong>
+              <span class="meta">{new Date(d.updatedAt).toLocaleString()}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
     {/if}
   </aside>
 
@@ -321,9 +492,23 @@
               {ready ? 'ready to copy' : 'incomplete'}
             </span>
             <span class="muted" style="min-width: 5rem; text-align: right;">{statusLabel}</span>
+            <button
+              class="btn btn-ghost btn-sm"
+              title={draft.pinned ? 'Unpin' : 'Pin to top'}
+              onclick={togglePin}
+            >{draft.pinned ? '📌 Pinned' : '📌 Pin'}</button>
+            <button class="btn btn-ghost btn-sm" onclick={duplicate}>⧉ Duplicate</button>
             <button class="btn btn-danger btn-sm" onclick={remove}>🗑 Delete</button>
           </div>
         </div>
+
+        {#if !ready && validationIssues.length > 0}
+          <ul class="issues">
+            {#each validationIssues as issue (issue)}
+              <li>⚠ {issue}</li>
+            {/each}
+          </ul>
+        {/if}
 
         {#if !detailsCollapsed}
         <div class="stack-lg">
@@ -342,6 +527,7 @@
           <div class="stack">
             <label for="d-tags">Theme tags (common to all groups)</label>
             <input id="d-tags" type="text" bind:value={themeTagsInput} />
+            <TagSuggestions tags={knownTags} current={themeTagsInput} onpick={addTag} />
           </div>
         </div>
         {/if}
@@ -455,19 +641,35 @@
 
   <!-- ==== Per-group output ==== -->
   <section>
-    <button
-      type="button"
-      class="collapse-header"
-      style="padding-left: 4px;"
-      aria-expanded={!toPostCollapsed}
-      onclick={() => (toPostCollapsed = !toPostCollapsed)}
-    >
-      <span class="collapse-chevron" class:collapsed={toPostCollapsed}>▾</span>
-      <h3 style="margin: 0;">To post</h3>
-      {#if postedRenders.length > 0}
-        <span class="muted" style="margin-left: auto;">{postedRenders.length} posted</span>
-      {/if}
-    </button>
+    <div class="card-header" style="padding-left: 4px;">
+      <button
+        type="button"
+        class="collapse-header"
+        style="width: auto; margin-bottom: 0;"
+        aria-expanded={!toPostCollapsed}
+        onclick={() => (toPostCollapsed = !toPostCollapsed)}
+      >
+        <span class="collapse-chevron" class:collapsed={toPostCollapsed}>▾</span>
+        <h3 style="margin: 0;">To post</h3>
+      </button>
+      <div class="row">
+        {#if postedRenders.length > 0}
+          <span class="muted">{postedRenders.length} posted</span>
+        {/if}
+        <button
+          class="btn btn-primary btn-sm"
+          disabled={activeRenders.length === 0}
+          title="Copy the next unposted group's text and open its vk.com page"
+          onclick={copyNextAndOpen}
+        >📋 Copy next &amp; open</button>
+      </div>
+    </div>
+
+    {#if postedSummary && postedSummary.total > 0}
+      <p class="muted" style="margin: -0.2rem 0 0.6rem; padding-left: 4px;">
+        Posted to {postedSummary.posted}/{postedSummary.total} groups{#if postedSummary.last} · last on {postedSummary.last.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}{/if}
+      </p>
+    {/if}
 
     {#if !toPostCollapsed}
       {#if renders.length === 0}
@@ -508,7 +710,12 @@
         {#each postedRenders as r (r.group.id)}
           <div class="card posted-card">
             <div class="card-header">
-              <strong>{r.group.displayName}</strong>
+              <strong>
+                {r.group.displayName}
+                {#if postedDateLabel(r.group.id!)}
+                  <span class="muted" style="font-weight: 400;">· posted {postedDateLabel(r.group.id!)}</span>
+                {/if}
+              </strong>
               <div class="row">
                 <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}>📋 Copy</button>
                 <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}>🌐 Open vk.com</button>
@@ -536,6 +743,48 @@
     display: block;
     font-weight: 500;
     margin-bottom: 4px;
+  }
+
+  /* Validation issues panel on the Draft details card. */
+  .issues {
+    margin: 0 0 0.6rem;
+    padding: 0.5rem 0.75rem;
+    list-style: none;
+    background: var(--vk-banner-err-bg);
+    color: var(--vk-banner-err-fg);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+  }
+  .issues li { margin: 0.1rem 0; }
+
+  /* Segmented status filter above the draft list. */
+  .seg {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 0.6rem;
+    background: var(--vk-hover);
+    border-radius: var(--radius-sm);
+    padding: 2px;
+  }
+  .seg-btn {
+    flex: 1;
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--vk-text-secondary);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.3rem 0.4rem;
+    border-radius: calc(var(--radius-sm) - 2px);
+    cursor: pointer;
+    transition: background 120ms, color 120ms;
+  }
+  .seg-btn:hover { color: var(--vk-text); }
+  .seg-btn.active {
+    background: var(--vk-surface);
+    color: var(--vk-blue);
+    box-shadow: var(--shadow-sm);
   }
 </style>
 

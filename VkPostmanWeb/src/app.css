@@ -370,6 +370,18 @@ label {
   }
 }
 
+/* ===== Search box above a list ===== */
+.search-input {
+  margin-bottom: 0.6rem;
+}
+
+/* ===== Field-group heading (mirrors the <label> look) ===== */
+.field-label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
 /* ===== List items ===== */
 .list {
   display: flex;

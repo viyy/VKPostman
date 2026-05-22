@@ -47,6 +47,8 @@ export interface TargetGroup {
   postTemplateId?: number;   // nullable — groups can exist without a template
   isActive: boolean;
   notes: string;
+  /** Pinned groups sort to the top of lists. */
+  pinned?: boolean;
   createdAt: Date;
 }
 
@@ -61,6 +63,13 @@ export interface PostDraft {
   targetGroupIds: number[];
   /** Group ids the user has marked as already posted (per-draft progress tracking). */
   postedGroupIds: number[];
+  /**
+   * When each group was marked posted, keyed by group id → ISO timestamp.
+   * Parallel to postedGroupIds (older drafts predate this and may omit it).
+   */
+  postedAt?: Record<number, string>;
+  /** Pinned drafts sort to the top of the list. */
+  pinned?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

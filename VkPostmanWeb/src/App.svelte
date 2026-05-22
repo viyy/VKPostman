@@ -5,6 +5,7 @@
   import PlaceholdersView from './views/PlaceholdersView.svelte';
   import { downloadExport, exportAll, importFromFile } from './lib/exchange';
   import { nav, type Tab } from './lib/nav.svelte';
+  import { undo } from './lib/undo.svelte';
 
   // Restore the last-used tab, then persist any change. The active tab itself
   // lives in the shared nav store so other views can switch tabs (e.g. a
@@ -34,13 +35,11 @@
     theme = theme === 'dark' ? 'light' : 'dark';
   }
 
-  // Settings sheet state
-  let showMenu = $state(false);
+  // Import/export state
   let importInput: HTMLInputElement | undefined = $state();
   let ioMessage = $state<{ ok: boolean; text: string } | null>(null);
 
   async function doExport() {
-    showMenu = false;
     try {
       const data = await exportAll();
       downloadExport(data);
@@ -57,7 +56,6 @@
   }
 
   function doImportClick() {
-    showMenu = false;
     importInput?.click();
   }
 
@@ -100,27 +98,24 @@
       v{__APP_VERSION__} · offline · local-only
     </span>
     <div style="flex: 1;"></div>
-    <div class="menu-wrap">
-      <button
-        class="icon-btn"
-        onclick={() => (showMenu = !showMenu)}
-        aria-label="Settings menu"
-        aria-expanded={showMenu}
-      >⋯</button>
-      {#if showMenu}
-        <div class="menu" role="menu">
-          <button class="menu-item" role="menuitem" onclick={toggleTheme}>
-            {theme === 'dark' ? '☀️ Light theme' : '🌙 Dark theme'}
-          </button>
-          <button class="menu-item" role="menuitem" onclick={doExport}>
-            ⬇️ Export data (JSON)
-          </button>
-          <button class="menu-item" role="menuitem" onclick={doImportClick}>
-            ⬆️ Import data (JSON)
-          </button>
-        </div>
-      {/if}
-    </div>
+    <button
+      class="icon-btn"
+      onclick={toggleTheme}
+      aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+      title={theme === 'dark' ? 'Light theme' : 'Dark theme'}
+    >{theme === 'dark' ? '☀️' : '🌙'}</button>
+    <button
+      class="icon-btn"
+      onclick={doExport}
+      aria-label="Export data (JSON)"
+      title="Export data (JSON)"
+    >⬇️</button>
+    <button
+      class="icon-btn"
+      onclick={doImportClick}
+      aria-label="Import data (JSON)"
+      title="Import data (JSON)"
+    >⬆️</button>
   </div>
 
   {#if ioMessage}
@@ -178,13 +173,15 @@
     style="display: none;"
     onchange={onImportPicked}
   />
-</div>
 
-<svelte:window onclick={(e) => {
-  if (!showMenu) return;
-  const t = e.target as HTMLElement;
-  if (!t.closest?.('.menu-wrap')) showMenu = false;
-}} />
+  {#if undo.message}
+    <div class="undo-toast" role="status">
+      <span>{undo.message}</span>
+      <button class="undo-btn" onclick={() => undo.undo()}>Undo</button>
+      <button class="undo-x" aria-label="Dismiss" onclick={() => undo.dismiss()}>✕</button>
+    </div>
+  {/if}
+</div>
 
 <style>
   .icon-btn {
@@ -200,42 +197,52 @@
   }
   .icon-btn:hover { background: rgba(255, 255, 255, 0.15); }
 
-  .menu-wrap {
-    position: relative;
-  }
-  .menu {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 6px);
-    min-width: 220px;
-    background: var(--vk-surface);
-    color: var(--vk-text);
-    border: 1px solid var(--vk-border);
-    border-radius: 8px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.14), 0 4px 10px rgba(0, 0, 0, 0.06);
-    padding: 4px;
-    z-index: 50;
-  }
-  .menu-item {
-    display: block;
-    width: 100%;
-    text-align: left;
-    padding: 0.55rem 0.75rem;
-    appearance: none;
-    background: transparent;
-    border: none;
-    font-family: inherit;
-    font-size: 0.9rem;
-    color: inherit;
-    cursor: pointer;
-    border-radius: 4px;
-  }
-  .menu-item:hover { background: var(--vk-hover); }
-
   .io-banner {
     padding: 0.55rem 1rem;
     font-size: 0.9rem;
   }
   .io-banner.ok  { background: var(--vk-banner-ok-bg); color: var(--vk-banner-ok-fg); }
   .io-banner.err { background: var(--vk-banner-err-bg); color: var(--vk-banner-err-fg); }
+
+  .undo-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 1.25rem;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--vk-text);
+    color: var(--vk-bg);
+    padding: 0.55rem 0.6rem 0.55rem 1rem;
+    border-radius: 999px;
+    box-shadow: var(--shadow-md);
+    z-index: 100;
+    font-size: 0.9rem;
+    max-width: calc(100vw - 2rem);
+  }
+  .undo-btn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--vk-blue);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+  }
+  .undo-btn:hover { background: rgba(127, 127, 127, 0.2); }
+  .undo-x {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: inherit;
+    opacity: 0.6;
+    font: inherit;
+    cursor: pointer;
+    padding: 0.2rem 0.45rem;
+    border-radius: 6px;
+  }
+  .undo-x:hover { opacity: 1; background: rgba(127, 127, 127, 0.2); }
 </style>
