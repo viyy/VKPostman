@@ -208,9 +208,15 @@
     new Map<string, PlaceholderDefinition>(library.map((d) => [d.key, d]))
   );
 
-  const selectedGroups = $derived(
-    draft ? groups.filter((g) => draft!.targetGroupIds.includes(g.id!)) : []
-  );
+  // Ordered by targetGroupIds so the render/queue order is the user's chosen
+  // order (drag-reorderable in the "To post" list), not DB/display order.
+  const selectedGroups = $derived.by(() => {
+    if (!draft) return [] as TargetGroup[];
+    const byId = new Map(groups.map((g) => [g.id!, g]));
+    return draft.targetGroupIds
+      .map((id) => byId.get(id))
+      .filter((g): g is TargetGroup => g != null);
+  });
 
   const placeholders = $derived(
     unionedPlaceholders(selectedGroups, templatesById, libraryByKey)
@@ -287,6 +293,13 @@
     if (targets.length === 0) return false;
     const posted = d.postedGroupIds ?? [];
     return targets.every((id) => posted.includes(id));
+  }
+
+  /** Posted/total target groups for a draft (drives the list progress bar). */
+  function progressOf(d: PostDraft): { posted: number; total: number } {
+    const targets = d.targetGroupIds ?? [];
+    const posted = d.postedGroupIds ?? [];
+    return { posted: targets.filter((id) => posted.includes(id)).length, total: targets.length };
   }
 
   const filteredDrafts = $derived.by(() => {
@@ -377,6 +390,21 @@
       month: 'short',
       day: 'numeric',
     });
+  }
+
+  // ---- Drag-to-reorder the target groups (affects "Copy next & open") ------
+  let dragGroupId = $state<number | null>(null);
+
+  function reorderTo(targetId: number) {
+    if (!draft || dragGroupId == null || dragGroupId === targetId) return;
+    const ids = [...draft.targetGroupIds];
+    const from = ids.indexOf(dragGroupId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, dragGroupId);
+    draft.targetGroupIds = ids;
+    dragGroupId = null;
   }
 
   function toggleGroup(g: TargetGroup) {
@@ -498,6 +526,16 @@
                 {#if d.pinned}<span title="Pinned">📌 </span>{/if}{#if isFullyPosted(d)}<span title="All target groups posted">✓ </span>{/if}{d.title}
               </strong>
               <span class="meta">{new Date(d.updatedAt).toLocaleString()}</span>
+              {#if progressOf(d).total > 0}
+                {@const p = progressOf(d)}
+                <span class="draft-progress" title={`Posted to ${p.posted} of ${p.total} groups`}>
+                  <span
+                    class="draft-progress-fill"
+                    class:done={p.posted === p.total}
+                    style="width: {(p.posted / p.total) * 100}%;"
+                  ></span>
+                </span>
+              {/if}
             </button>
           {/each}
         </div>
@@ -771,9 +809,27 @@
         <p class="muted">All selected groups are marked posted. 🎉</p>
       {:else}
         {#each activeRenders as r (r.group.id)}
-          <div class="card">
+          <div
+            class="card"
+            class:drop-target={dragGroupId != null && dragGroupId !== r.group.id}
+            ondragover={(e) => { if (dragGroupId != null) e.preventDefault(); }}
+            ondrop={() => reorderTo(r.group.id!)}
+            role="listitem"
+          >
             <div class="card-header">
-              <strong>{r.group.displayName}</strong>
+              <strong>
+                <span
+                  class="drag-handle"
+                  draggable="true"
+                  role="button"
+                  tabindex="-1"
+                  ondragstart={() => (dragGroupId = r.group.id!)}
+                  ondragend={() => (dragGroupId = null)}
+                  title="Drag to reorder the posting queue"
+                  aria-label="Drag to reorder"
+                >⠿</span>
+                {r.group.displayName}
+              </strong>
               <div class="row">
                 <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}>📋 Copy</button>
                 <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}>🌐 Open vk.com</button>
@@ -836,6 +892,37 @@
     display: block;
     font-weight: 500;
     margin-bottom: 4px;
+  }
+
+  /* Per-draft posting progress bar in the list. */
+  .draft-progress {
+    display: block;
+    margin-top: 0.35rem;
+    height: 4px;
+    background: var(--vk-border);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .draft-progress-fill {
+    display: block;
+    height: 100%;
+    background: var(--vk-blue);
+    border-radius: 999px;
+    transition: width 200ms ease;
+  }
+  .draft-progress-fill.done { background: var(--vk-success); }
+
+  /* Drag-to-reorder the To post queue. */
+  .drag-handle {
+    cursor: grab;
+    color: var(--vk-text-secondary);
+    margin-right: 0.3rem;
+    user-select: none;
+  }
+  .drag-handle:active { cursor: grabbing; }
+  .card.drop-target {
+    outline: 2px dashed var(--vk-blue);
+    outline-offset: -2px;
   }
 
   /* Compact icon-only action buttons in the Draft details header. */

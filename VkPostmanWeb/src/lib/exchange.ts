@@ -20,6 +20,7 @@
 // ---------------------------------------------------------------------------
 
 import { db } from './db';
+import { extractLibraryPlaceholderKeys } from './render';
 import {
   PlaceholderType,
   type PlaceholderDefinition,
@@ -47,6 +48,58 @@ export async function exportAll(): Promise<ExportFile> {
     db.groups.toArray(),
     db.drafts.toArray(),
   ]);
+  return {
+    formatVersion: FORMAT_VERSION,
+    exportedAt: new Date().toISOString(),
+    app: 'vk-postman',
+    placeholders,
+    templates,
+    groups,
+    drafts,
+  };
+}
+
+/** Which records the user picked for a subset export. */
+export interface SubsetSelection {
+  templateIds: number[];
+  groupIds: number[];
+  draftIds: number[];
+}
+
+/**
+ * Export only the chosen records, plus everything they depend on so the file
+ * imports cleanly: a draft pulls in its target/posted groups; a group pulls in
+ * its template; a template (and any draft) pulls in the placeholders it uses.
+ */
+export async function exportSubset(sel: SubsetSelection): Promise<ExportFile> {
+  const [allPh, allTpl, allGrp, allDrf] = await Promise.all([
+    db.placeholders.toArray(),
+    db.templates.toArray(),
+    db.groups.toArray(),
+    db.drafts.toArray(),
+  ]);
+
+  const tplIds = new Set(sel.templateIds);
+  const grpIds = new Set(sel.groupIds);
+  const drfIds = new Set(sel.draftIds);
+
+  const drafts = allDrf.filter((d) => d.id != null && drfIds.has(d.id));
+  for (const d of drafts) {
+    for (const gid of d.targetGroupIds ?? []) grpIds.add(gid);
+    for (const gid of d.postedGroupIds ?? []) grpIds.add(gid);
+  }
+
+  const groups = allGrp.filter((g) => g.id != null && grpIds.has(g.id));
+  for (const g of groups) if (g.postTemplateId != null) tplIds.add(g.postTemplateId);
+
+  const templates = allTpl.filter((t) => t.id != null && tplIds.has(t.id));
+
+  const phKeys = new Set<string>();
+  for (const t of templates)
+    for (const k of extractLibraryPlaceholderKeys(t.bodyTemplate)) phKeys.add(k);
+  for (const d of drafts) for (const k of Object.keys(d.placeholderValues ?? {})) phKeys.add(k);
+  const placeholders = allPh.filter((p) => phKeys.has(p.key));
+
   return {
     formatVersion: FORMAT_VERSION,
     exportedAt: new Date().toISOString(),
@@ -174,6 +227,106 @@ export async function importFromJson(parsed: unknown): Promise<ImportSummary> {
 
       return {
         placeholders: payload.placeholders.length,
+        templates: payload.templates.length,
+        groups: payload.groups.length,
+        drafts: payload.drafts.length,
+      };
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Merge import — ADD the file's records alongside existing data (non-destructive).
+// IDs are remapped so nothing is overwritten; placeholders dedupe by key.
+// ---------------------------------------------------------------------------
+
+export async function mergeFromFile(file: File): Promise<ImportSummary> {
+  const text = await file.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`That file isn't valid JSON: ${(err as Error).message}`);
+  }
+  return mergeFromJson(parsed);
+}
+
+export async function mergeFromJson(parsed: unknown): Promise<ImportSummary> {
+  const payload = assertExportFile(parsed);
+
+  return db.transaction(
+    'rw',
+    [db.templates, db.groups, db.drafts, db.placeholders],
+    async () => {
+      // --- placeholders: keep existing rows, add only new keys ---
+      const existingPh = await db.placeholders.toArray();
+      const phByKey = new Map(existingPh.map((p) => [p.key, p.id!]));
+      let phAdded = 0;
+      for (const p of payload.placeholders) {
+        if (phByKey.has(p.key)) continue;
+        const { id: _omit, ...rest } = p as PlaceholderDefinition & { id?: number };
+        const newId = (await db.placeholders.add({
+          ...rest,
+          createdAt: coerceDate(rest.createdAt),
+          updatedAt: coerceDate(rest.updatedAt),
+        } as PlaceholderDefinition))!;
+        phByKey.set(p.key, newId);
+        phAdded++;
+      }
+
+      // --- templates: always add as new rows ---
+      const templateIdMap = new Map<number, number>();
+      for (const t of payload.templates) {
+        const oldId = t.id;
+        const { id: _omit, ...rest } = t as PostTemplate & { id?: number };
+        const newId = (await db.templates.add({
+          ...rest,
+          createdAt: coerceDate(rest.createdAt),
+          updatedAt: coerceDate(rest.updatedAt),
+        } as PostTemplate))!;
+        if (oldId != null) templateIdMap.set(oldId, newId);
+      }
+
+      // --- groups: add new, remap template reference ---
+      const groupIdMap = new Map<number, number>();
+      for (const g of payload.groups) {
+        const oldId = g.id;
+        const { id: _omit, ...rest } = g as TargetGroup & { id?: number };
+        const remappedTemplateId =
+          rest.postTemplateId != null ? templateIdMap.get(rest.postTemplateId) : undefined;
+        const newId = (await db.groups.add({
+          ...rest,
+          postTemplateId: remappedTemplateId,
+          createdAt: coerceDate(rest.createdAt),
+        } as TargetGroup))!;
+        if (oldId != null) groupIdMap.set(oldId, newId);
+      }
+
+      // --- drafts: add new, remap group references ---
+      const remapGroupIds = (ids: number[] | undefined) =>
+        (ids ?? []).map((oid) => groupIdMap.get(oid)).filter((v): v is number => v != null);
+      const remapPostedAt = (m: Record<number, string> | undefined) => {
+        const out: Record<number, string> = {};
+        for (const [k, v] of Object.entries(m ?? {})) {
+          const nid = groupIdMap.get(Number(k));
+          if (nid != null) out[nid] = v;
+        }
+        return out;
+      };
+      for (const d of payload.drafts) {
+        const { id: _omit, ...rest } = d as PostDraft & { id?: number };
+        await db.drafts.add({
+          ...rest,
+          targetGroupIds: remapGroupIds(rest.targetGroupIds),
+          postedGroupIds: remapGroupIds(rest.postedGroupIds),
+          postedAt: remapPostedAt(rest.postedAt),
+          createdAt: coerceDate(rest.createdAt),
+          updatedAt: coerceDate(rest.updatedAt),
+        } as PostDraft);
+      }
+
+      return {
+        placeholders: phAdded,
         templates: payload.templates.length,
         groups: payload.groups.length,
         drafts: payload.drafts.length,

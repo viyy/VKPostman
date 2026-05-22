@@ -7,6 +7,9 @@
   import { downloadExport, exportAll, importFromFile } from './lib/exchange';
   import { nav, type Tab } from './lib/nav.svelte';
   import { undo } from './lib/undo.svelte';
+  import { db } from './lib/db';
+  import { formatBytes, getStorageInfo, requestPersistentStorage, type StorageInfo } from './lib/storage';
+  import DataModal from './views/DataModal.svelte';
 
   // Restore the last-used tab, then persist any change. The active tab itself
   // lives in the shared nav store so other views can switch tabs (e.g. a
@@ -40,10 +43,61 @@
   let importInput: HTMLInputElement | undefined = $state();
   let ioMessage = $state<{ ok: boolean; text: string } | null>(null);
 
+  // ---- Backup reminder -----------------------------------------------------
+  const BACKUP_INTERVAL_DAYS = 7;
+  const SNOOZE_DAYS = 3;
+  let lastExportAt = $state<number>(Number(localStorage.getItem('vkp.lastExportAt')) || 0);
+  let snoozeUntil = $state<number>(Number(localStorage.getItem('vkp.backupSnoozeUntil')) || 0);
+  let hasData = $state(false);
+
+  function markExported() {
+    lastExportAt = Date.now();
+    localStorage.setItem('vkp.lastExportAt', String(lastExportAt));
+  }
+  function snoozeBackup() {
+    snoozeUntil = Date.now() + SNOOZE_DAYS * 86_400_000;
+    localStorage.setItem('vkp.backupSnoozeUntil', String(snoozeUntil));
+  }
+
+  const daysSinceExport = $derived(
+    lastExportAt ? Math.floor((Date.now() - lastExportAt) / 86_400_000) : Infinity,
+  );
+  const showBackupReminder = $derived(
+    hasData && Date.now() > snoozeUntil && daysSinceExport >= BACKUP_INTERVAL_DAYS,
+  );
+
+  // ---- Storage quota indicator ---------------------------------------------
+  let storage = $state<StorageInfo | null>(null);
+  async function refreshStorage() {
+    storage = await getStorageInfo();
+  }
+  async function onQuotaClick() {
+    const ok = await requestPersistentStorage();
+    await refreshStorage();
+    ioMessage = ok
+      ? { ok: true, text: 'Storage marked persistent — the browser won’t evict your data.' }
+      : { ok: false, text: 'The browser declined persistent storage (data may still be evicted).' };
+  }
+
+  $effect(() => {
+    void refreshStorage();
+    void (async () => {
+      const [t, g, d] = await Promise.all([db.templates.count(), db.groups.count(), db.drafts.count()]);
+      hasData = t + g + d > 0;
+    })();
+    const id = setInterval(refreshStorage, 60_000);
+    return () => clearInterval(id);
+  });
+
+  // ---- Data tools modal ----------------------------------------------------
+  let showData = $state(false);
+
   async function doExport() {
     try {
       const data = await exportAll();
       downloadExport(data);
+      markExported();
+      void refreshStorage();
       ioMessage = {
         ok: true,
         text:
@@ -73,6 +127,8 @@
 
     try {
       const summary = await importFromFile(file);
+      hasData = summary.templates + summary.groups + summary.drafts > 0;
+      void refreshStorage();
       ioMessage = {
         ok: true,
         text:
@@ -99,6 +155,17 @@
       v{__APP_VERSION__} · offline · local-only
     </span>
     <div style="flex: 1;"></div>
+    {#if storage}
+      <button
+        class="quota"
+        onclick={onQuotaClick}
+        title={`Local storage: ${formatBytes(storage.usage)} of ${formatBytes(storage.quota)} used` +
+          `${storage.quota ? ` (${((storage.usage / storage.quota) * 100).toFixed(1)}%)` : ''}` +
+          (storage.persisted ? ' · persistent' : ' · click to make persistent')}
+      >
+        {storage.persisted ? '🔒' : '💾'} {formatBytes(storage.usage)}
+      </button>
+    {/if}
     <button
       class="icon-btn"
       onclick={toggleTheme}
@@ -107,17 +174,33 @@
     >{theme === 'dark' ? '☀️' : '🌙'}</button>
     <button
       class="icon-btn"
+      onclick={() => (showData = true)}
+      aria-label="Data tools (subset export / merge import)"
+      title="Data tools: export a selection · merge import"
+    >🗂️</button>
+    <button
+      class="icon-btn"
       onclick={doExport}
-      aria-label="Export data (JSON)"
-      title="Export data (JSON)"
+      aria-label="Export all data (JSON backup)"
+      title="Export all data (JSON backup)"
     >⬇️</button>
     <button
       class="icon-btn"
       onclick={doImportClick}
-      aria-label="Import data (JSON)"
-      title="Import data (JSON)"
+      aria-label="Import data — replace all (JSON)"
+      title="Import data — replace all (JSON)"
     >⬆️</button>
   </div>
+
+  {#if showBackupReminder}
+    <div class="io-banner backup">
+      ⚠ You haven’t backed up
+      {#if daysSinceExport === Infinity}yet{:else}in {daysSinceExport} days{/if}.
+      Your data lives only in this browser.
+      <button class="link-inline" onclick={doExport}>Export now</button>
+      <button class="link-inline muted-link" onclick={snoozeBackup}>Remind me later</button>
+    </div>
+  {/if}
 
   {#if ioMessage}
     <div class="io-banner {ioMessage.ok ? 'ok' : 'err'}">{ioMessage.text}</div>
@@ -191,6 +274,13 @@
       <button class="undo-x" aria-label="Dismiss" onclick={() => undo.dismiss()}>✕</button>
     </div>
   {/if}
+
+  {#if showData}
+    <DataModal
+      onclose={() => (showData = false)}
+      onresult={(msg) => { ioMessage = msg; void refreshStorage(); }}
+    />
+  {/if}
 </div>
 
 <style>
@@ -206,6 +296,41 @@
     cursor: pointer;
   }
   .icon-btn:hover { background: rgba(255, 255, 255, 0.15); }
+
+  .quota {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.85);
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .quota:hover { background: rgba(255, 255, 255, 0.15); }
+
+  .io-banner.backup {
+    background: var(--vk-warning);
+    color: #1a1300;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .link-inline {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0.1rem 0.3rem;
+  }
+  .link-inline.muted-link { font-weight: 500; opacity: 0.8; }
 
   .io-banner {
     padding: 0.55rem 1rem;
