@@ -443,6 +443,7 @@ function assertGroup(x: unknown, i: number): TargetGroup {
     screenName: asString(r.screenName, `groups[${i}].screenName`).replace(/^@/, ''),
     displayName: asString(r.displayName, `groups[${i}].displayName`),
     mandatoryTags: asStringArray(r.mandatoryTags),
+    markers: asStringArray(r.markers),
     postTemplateId: asOptionalInt(r.postTemplateId),
     isActive: r.isActive == null ? true : Boolean(r.isActive),
     notes: asStringOrEmpty(r.notes),

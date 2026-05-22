@@ -381,6 +381,22 @@ label {
   margin-bottom: 0.6rem;
 }
 
+/* ===== Marker labels on groups ===== */
+.marker-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+.marker-chip {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--vk-accent);
+  color: var(--vk-blue);
+}
+
 /* ===== Inline icons sitting next to text ===== */
 .inline-ico {
   vertical-align: -0.15em;
