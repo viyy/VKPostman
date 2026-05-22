@@ -11,6 +11,10 @@
   import { formatBytes, getStorageInfo, requestPersistentStorage, type StorageInfo } from './lib/storage';
   import DataModal from './views/DataModal.svelte';
   import GlobalSearch from './views/GlobalSearch.svelte';
+  import {
+    Send, Search, Moon, Sun, Database, Download, Upload, HardDrive, Lock,
+    TriangleAlert, FileText, LayoutTemplate, Tags, Users, ChartColumn, X,
+  } from '@lucide/svelte';
 
   // Restore the last-used tab, then persist any change. The active tab itself
   // lives in the shared nav store so other views can switch tabs (e.g. a
@@ -190,7 +194,7 @@
 
 <div class="app">
   <div class="topbar">
-    <span class="brand">✉️ VK Postman</span>
+    <span class="brand"><Send size={18} /> VK Postman</span>
     <span class="muted" style="color: rgba(255,255,255,0.75); font-size: 0.78rem;">
       v{__APP_VERSION__} · offline · local-only
     </span>
@@ -203,7 +207,8 @@
           `${storage.quota ? ` (${((storage.usage / storage.quota) * 100).toFixed(1)}%)` : ''}` +
           (storage.persisted ? ' · persistent' : ' · click to make persistent')}
       >
-        {storage.persisted ? '🔒' : '💾'} {formatBytes(storage.usage)}
+        {#if storage.persisted}<Lock size={14} />{:else}<HardDrive size={14} />{/if}
+        {formatBytes(storage.usage)}
       </button>
     {/if}
     <button
@@ -211,36 +216,37 @@
       onclick={() => (showSearch = true)}
       aria-label="Search (Ctrl+K)"
       title="Search everything (Ctrl+K)"
-    >🔍</button>
+    ><Search size={20} /></button>
     <button
       class="icon-btn"
       onclick={toggleTheme}
       aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
       title={theme === 'dark' ? 'Light theme' : 'Dark theme'}
-    >{theme === 'dark' ? '☀️' : '🌙'}</button>
+    >{#if theme === 'dark'}<Sun size={20} />{:else}<Moon size={20} />{/if}</button>
     <button
       class="icon-btn"
       onclick={() => (showData = true)}
       aria-label="Data tools (subset export / merge import)"
       title="Data tools: export a selection · merge import"
-    >🗂️</button>
+    ><Database size={20} /></button>
     <button
       class="icon-btn"
       onclick={doExport}
       aria-label="Export all data (JSON backup)"
       title="Export all data (JSON backup)"
-    >⬇️</button>
+    ><Download size={20} /></button>
     <button
       class="icon-btn"
       onclick={doImportClick}
       aria-label="Import data — replace all (JSON)"
       title="Import data — replace all (JSON)"
-    >⬆️</button>
+    ><Upload size={20} /></button>
   </div>
 
   {#if showBackupReminder}
     <div class="io-banner backup">
-      ⚠ You haven’t backed up
+      <TriangleAlert size={16} />
+      You haven’t backed up
       {#if daysSinceExport === Infinity}yet{:else}in {daysSinceExport} days{/if}.
       Your data lives only in this browser.
       <button class="link-inline" onclick={doExport}>Export now</button>
@@ -259,35 +265,35 @@
       role="tab"
       aria-selected={nav.tab === 'drafts'}
       onclick={() => (nav.tab = 'drafts')}
-    >📝 Drafts</button>
+    ><FileText size={16} /> Drafts</button>
     <button
       class="tab"
       class:active={nav.tab === 'templates'}
       role="tab"
       aria-selected={nav.tab === 'templates'}
       onclick={() => (nav.tab = 'templates')}
-    >📄 Templates</button>
+    ><LayoutTemplate size={16} /> Templates</button>
     <button
       class="tab"
       class:active={nav.tab === 'placeholders'}
       role="tab"
       aria-selected={nav.tab === 'placeholders'}
       onclick={() => (nav.tab = 'placeholders')}
-    >🏷 Placeholders</button>
+    ><Tags size={16} /> Placeholders</button>
     <button
       class="tab"
       class:active={nav.tab === 'groups'}
       role="tab"
       aria-selected={nav.tab === 'groups'}
       onclick={() => (nav.tab = 'groups')}
-    >👥 Groups</button>
+    ><Users size={16} /> Groups</button>
     <button
       class="tab"
       class:active={nav.tab === 'stats'}
       role="tab"
       aria-selected={nav.tab === 'stats'}
       onclick={() => (nav.tab = 'stats')}
-    >📊 Stats</button>
+    ><ChartColumn size={16} /> Stats</button>
   </div>
 
   <main class="content">
@@ -317,7 +323,7 @@
     <div class="undo-toast" role="status">
       <span>{undo.message}</span>
       <button class="undo-btn" onclick={() => undo.undo()}>Undo</button>
-      <button class="undo-x" aria-label="Dismiss" onclick={() => undo.dismiss()}>✕</button>
+      <button class="undo-x" aria-label="Dismiss" onclick={() => undo.dismiss()}><X size={16} /></button>
     </div>
   {/if}
 
@@ -362,8 +368,10 @@
     border: none;
     background: transparent;
     color: rgba(255, 255, 255, 0.9);
-    padding: 0.3rem 0.55rem;
-    font-size: 1.3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.4rem 0.5rem;
     line-height: 1;
     border-radius: 6px;
     cursor: pointer;
@@ -375,6 +383,9 @@
     border: none;
     background: transparent;
     color: rgba(255, 255, 255, 0.85);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
     font: inherit;
     font-size: 0.78rem;
     padding: 0.25rem 0.5rem;

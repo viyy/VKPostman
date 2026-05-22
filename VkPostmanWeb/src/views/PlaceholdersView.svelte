@@ -8,6 +8,7 @@
     type PostTemplate,
   } from '../lib/types';
   import { createAutosave, type AutosaveStatus } from '../lib/autosave';
+  import { Plus, Trash2 } from '@lucide/svelte';
 
   const libraryQuery = liveQuery(() => db.placeholders.orderBy('key').toArray());
   const templatesQuery = liveQuery(() => db.templates.toArray());
@@ -133,7 +134,7 @@
   <aside class="card">
     <div class="card-header">
       <h3 style="margin: 0;">Placeholders</h3>
-      <button class="btn btn-primary btn-sm" onclick={addNew}>+ New</button>
+      <button class="btn btn-primary btn-sm" onclick={addNew}><Plus size={15} /> New</button>
     </div>
     {#if unusedPlaceholders.length > 0}
       <button
@@ -141,7 +142,7 @@
         style="width: 100%; margin-bottom: 8px;"
         onclick={removeUnused}
         title="Delete placeholders not referenced by any template"
-      >🧹 Remove unused ({unusedPlaceholders.length})</button>
+      ><Trash2 size={15} /> Remove unused ({unusedPlaceholders.length})</button>
     {/if}
     {#if !library}
       <p class="muted">Loading…</p>
@@ -232,7 +233,7 @@
 
         <div>
           <button class="btn btn-danger btn-sm" onclick={() => remove(editing!)}>
-            🗑 Delete placeholder
+            <Trash2 size={15} /> Delete placeholder
           </button>
         </div>
       </div>
