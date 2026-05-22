@@ -477,7 +477,7 @@
         <button
           class="seg-btn" class:active={statusFilter === 'active'}
           onclick={() => (statusFilter = 'active')}
-        >In progress</button>
+        >Active</button>
         <button
           class="seg-btn" class:active={statusFilter === 'posted'}
           onclick={() => (statusFilter = 'posted')}
@@ -524,20 +524,32 @@
             onclick={() => (detailsCollapsed = !detailsCollapsed)}
           >
             <span class="collapse-chevron" class:collapsed={detailsCollapsed}>▾</span>
-            <h3 style="margin: 0;">Draft details</h3>
+            <h3 style="margin: 0; white-space: nowrap;">Draft details</h3>
           </button>
-          <div class="row">
+          <div class="row" style="flex-wrap: nowrap;">
             <span class="pill" style={ready ? '' : 'background:var(--vk-hover); color:var(--vk-text-secondary);'}>
-              {ready ? 'ready to copy' : 'incomplete'}
+              {ready ? 'ready' : 'incomplete'}
             </span>
-            <span class="muted" style="min-width: 5rem; text-align: right;">{statusLabel}</span>
+            <span class="muted" style="text-align: right;">{statusLabel}</span>
             <button
-              class="btn btn-ghost btn-sm"
+              class="btn btn-ghost btn-sm icon-only"
+              class:pinned={draft.pinned}
               title={draft.pinned ? 'Unpin' : 'Pin to top'}
+              aria-label={draft.pinned ? 'Unpin' : 'Pin to top'}
               onclick={togglePin}
-            >{draft.pinned ? '📌 Pinned' : '📌 Pin'}</button>
-            <button class="btn btn-ghost btn-sm" onclick={duplicate}>⧉ Duplicate</button>
-            <button class="btn btn-danger btn-sm" onclick={remove}>🗑 Delete</button>
+            >📌</button>
+            <button
+              class="btn btn-ghost btn-sm icon-only"
+              title="Duplicate"
+              aria-label="Duplicate draft"
+              onclick={duplicate}
+            >⧉</button>
+            <button
+              class="btn btn-danger btn-sm icon-only"
+              title="Delete"
+              aria-label="Delete draft"
+              onclick={remove}
+            >🗑</button>
           </div>
         </div>
 
@@ -826,6 +838,16 @@
     margin-bottom: 4px;
   }
 
+  /* Compact icon-only action buttons in the Draft details header. */
+  .icon-only {
+    padding-left: 0.45rem;
+    padding-right: 0.45rem;
+  }
+  .icon-only.pinned {
+    background: var(--vk-accent);
+    border-color: var(--vk-blue);
+  }
+
   /* Image attachment checklist. */
   .dropzone {
     border: 1.5px dashed var(--vk-border-strong);
@@ -909,6 +931,7 @@
     padding: 0.3rem 0.4rem;
     border-radius: calc(var(--radius-sm) - 2px);
     cursor: pointer;
+    white-space: nowrap;
     transition: background 120ms, color 120ms;
   }
   .seg-btn:hover { color: var(--vk-text); }
