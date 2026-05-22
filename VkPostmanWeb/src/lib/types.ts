@@ -61,6 +61,11 @@ export interface PostDraft {
   targetGroupIds: number[];
   /** Group ids the user has marked as already posted (per-draft progress tracking). */
   postedGroupIds: number[];
+  /**
+   * When each group was marked posted, keyed by group id → ISO timestamp.
+   * Parallel to postedGroupIds (older drafts predate this and may omit it).
+   */
+  postedAt?: Record<number, string>;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { liveQuery } from 'dexie';
-  import { db, createDraft, saveDraft, deleteDraft } from '../lib/db';
+  import { db, createDraft, duplicateDraft, saveDraft, deleteDraft } from '../lib/db';
   import {
     isDraftReady,
     packWikiLink,
@@ -37,6 +37,16 @@
   });
 
   let saveStatus = $state<AutosaveStatus>('idle');
+
+  // ---- Draft list search + status filter -----------------------------------
+  type StatusFilter = 'all' | 'active' | 'posted';
+  let search = $state('');
+  let statusFilter = $state<StatusFilter>(
+    (localStorage.getItem('vkp.draftStatusFilter') as StatusFilter | null) ?? 'all',
+  );
+  $effect(() => {
+    localStorage.setItem('vkp.draftStatusFilter', statusFilter);
+  });
 
   // ---- Live data -----------------------------------------------------------
   const draftsQuery    = liveQuery(() => db.drafts.orderBy('updatedAt').reverse().toArray());
@@ -90,6 +100,7 @@
         targetGroupIds: [...d.targetGroupIds],
         // Older drafts predate posted tracking — default to empty.
         postedGroupIds: [...(d.postedGroupIds ?? [])],
+        postedAt: { ...(d.postedAt ?? {}) },
       };
       themeTagsInput = draft.themeTags.join(' ');
       // Adopt the freshly-loaded draft as the autosave baseline so merely
@@ -177,6 +188,55 @@
     renders.filter((r) => (draft?.postedGroupIds ?? []).includes(r.group.id!))
   );
 
+  // Posted summary for the open draft: "posted to N/M groups, last on <date>".
+  const postedSummary = $derived.by(() => {
+    if (!draft) return null;
+    const targets = draft.targetGroupIds;
+    const postedIds = targets.filter((id) => draft!.postedGroupIds.includes(id));
+    let last: Date | null = null;
+    for (const id of postedIds) {
+      const iso = draft.postedAt?.[id];
+      if (!iso) continue;
+      const dt = new Date(iso);
+      if (!last || dt > last) last = dt;
+    }
+    return { total: targets.length, posted: postedIds.length, last };
+  });
+
+  // ---- Draft list filtering (search + status) ------------------------------
+  const groupsById = $derived(new Map(groups.map((g) => [g.id!, g])));
+
+  /** A draft counts as "posted" once it has targets and all are marked posted. */
+  function isFullyPosted(d: PostDraft): boolean {
+    const targets = d.targetGroupIds ?? [];
+    if (targets.length === 0) return false;
+    const posted = d.postedGroupIds ?? [];
+    return targets.every((id) => posted.includes(id));
+  }
+
+  const filteredDrafts = $derived.by(() => {
+    const list = drafts ?? [];
+    const q = search.trim().toLowerCase();
+    return list.filter((d) => {
+      // Status filter.
+      if (statusFilter === 'posted' && !isFullyPosted(d)) return false;
+      if (statusFilter === 'active' && isFullyPosted(d)) return false;
+      // Text search: title, common text, theme tags, target group name/alias.
+      if (!q) return true;
+      if (d.title.toLowerCase().includes(q)) return true;
+      if (d.commonText.toLowerCase().includes(q)) return true;
+      if (d.themeTags.some((t) => t.toLowerCase().includes(q))) return true;
+      return (d.targetGroupIds ?? []).some((id) => {
+        const g = groupsById.get(id);
+        return (
+          !!g &&
+          (g.displayName.toLowerCase().includes(q) ||
+            g.screenName.toLowerCase().includes(q))
+        );
+      });
+    });
+  });
+
   // ---- Commands ------------------------------------------------------------
   async function newDraft() {
     await autosave.flush();
@@ -197,16 +257,40 @@
     currentId = null;
   }
 
+  /** Clone the current draft (keeps content, resets posted progress). */
+  async function duplicate() {
+    if (!draft?.id) return;
+    await autosave.flush();
+    currentId = await duplicateDraft(draft.id);
+  }
+
   function markPosted(groupId: number) {
     if (!draft) return;
     if (!draft.postedGroupIds.includes(groupId)) {
       draft.postedGroupIds = [...draft.postedGroupIds, groupId];
     }
+    // Record/refresh the timestamp for this group.
+    draft.postedAt = { ...(draft.postedAt ?? {}), [groupId]: new Date().toISOString() };
   }
 
   function unmarkPosted(groupId: number) {
     if (!draft) return;
     draft.postedGroupIds = draft.postedGroupIds.filter((id) => id !== groupId);
+    if (draft.postedAt) {
+      const { [groupId]: _drop, ...rest } = draft.postedAt;
+      draft.postedAt = rest;
+    }
+  }
+
+  /** Human label for when a group was marked posted (or '' if unknown). */
+  function postedDateLabel(groupId: number): string {
+    const iso = draft?.postedAt?.[groupId];
+    if (!iso) return '';
+    return new Date(iso).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
   }
 
   function toggleGroup(g: TargetGroup) {
@@ -280,18 +364,46 @@
     {:else if drafts.length === 0}
       <p class="muted">No drafts yet.</p>
     {:else}
-      <div class="list">
-        {#each drafts as d (d.id)}
-          <button
-            class="list-item"
-            class:active={currentId === d.id}
-            onclick={() => d.id != null && selectDraft(d.id)}
-          >
-            <strong>{d.title}</strong>
-            <span class="meta">{new Date(d.updatedAt).toLocaleString()}</span>
-          </button>
-        {/each}
+      <input
+        type="text"
+        class="search-input"
+        placeholder="Search title, text, group…"
+        bind:value={search}
+        aria-label="Search drafts"
+      />
+      <div class="seg" role="tablist" aria-label="Filter by status">
+        <button
+          class="seg-btn" class:active={statusFilter === 'all'}
+          onclick={() => (statusFilter = 'all')}
+        >All</button>
+        <button
+          class="seg-btn" class:active={statusFilter === 'active'}
+          onclick={() => (statusFilter = 'active')}
+        >In progress</button>
+        <button
+          class="seg-btn" class:active={statusFilter === 'posted'}
+          onclick={() => (statusFilter = 'posted')}
+        >Posted</button>
       </div>
+
+      {#if filteredDrafts.length === 0}
+        <p class="muted">No drafts match the current filter.</p>
+      {:else}
+        <div class="list">
+          {#each filteredDrafts as d (d.id)}
+            <button
+              class="list-item"
+              class:active={currentId === d.id}
+              onclick={() => d.id != null && selectDraft(d.id)}
+            >
+              <strong>
+                {#if isFullyPosted(d)}<span title="All target groups posted">✓ </span>{/if}{d.title}
+              </strong>
+              <span class="meta">{new Date(d.updatedAt).toLocaleString()}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
     {/if}
   </aside>
 
@@ -321,6 +433,7 @@
               {ready ? 'ready to copy' : 'incomplete'}
             </span>
             <span class="muted" style="min-width: 5rem; text-align: right;">{statusLabel}</span>
+            <button class="btn btn-ghost btn-sm" onclick={duplicate}>⧉ Duplicate</button>
             <button class="btn btn-danger btn-sm" onclick={remove}>🗑 Delete</button>
           </div>
         </div>
@@ -469,6 +582,12 @@
       {/if}
     </button>
 
+    {#if postedSummary && postedSummary.total > 0}
+      <p class="muted" style="margin: -0.2rem 0 0.6rem; padding-left: 4px;">
+        Posted to {postedSummary.posted}/{postedSummary.total} groups{#if postedSummary.last} · last on {postedSummary.last.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}{/if}
+      </p>
+    {/if}
+
     {#if !toPostCollapsed}
       {#if renders.length === 0}
         <p class="muted">Pick one or more target groups on the left to see rendered posts.</p>
@@ -508,7 +627,12 @@
         {#each postedRenders as r (r.group.id)}
           <div class="card posted-card">
             <div class="card-header">
-              <strong>{r.group.displayName}</strong>
+              <strong>
+                {r.group.displayName}
+                {#if postedDateLabel(r.group.id!)}
+                  <span class="muted" style="font-weight: 400;">· posted {postedDateLabel(r.group.id!)}</span>
+                {/if}
+              </strong>
               <div class="row">
                 <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}>📋 Copy</button>
                 <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}>🌐 Open vk.com</button>
@@ -536,6 +660,36 @@
     display: block;
     font-weight: 500;
     margin-bottom: 4px;
+  }
+
+  /* Segmented status filter above the draft list. */
+  .seg {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 0.6rem;
+    background: var(--vk-hover);
+    border-radius: var(--radius-sm);
+    padding: 2px;
+  }
+  .seg-btn {
+    flex: 1;
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--vk-text-secondary);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.3rem 0.4rem;
+    border-radius: calc(var(--radius-sm) - 2px);
+    cursor: pointer;
+    transition: background 120ms, color 120ms;
+  }
+  .seg-btn:hover { color: var(--vk-text); }
+  .seg-btn.active {
+    background: var(--vk-surface);
+    color: var(--vk-blue);
+    box-shadow: var(--shadow-sm);
   }
 </style>
 

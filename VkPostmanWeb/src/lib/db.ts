@@ -81,6 +81,29 @@ export async function createDraft(): Promise<number> {
     themeTags: [],
     targetGroupIds: [],
     postedGroupIds: [],
+    postedAt: {},
+    createdAt: now,
+    updatedAt: now,
+  }))!;
+}
+
+/**
+ * Clones an existing draft for re-use: keeps the text, placeholder values,
+ * theme tags and target groups, but resets all "posted" progress so the copy
+ * starts fresh. Returns the new draft's id.
+ */
+export async function duplicateDraft(id: number): Promise<number> {
+  const src = await db.drafts.get(id);
+  if (!src) throw new Error(`Draft ${id} not found`);
+  const now = new Date();
+  return (await db.drafts.add({
+    title: `Copy of ${src.title}`,
+    commonText: src.commonText,
+    placeholderValues: { ...src.placeholderValues },
+    themeTags: [...src.themeTags],
+    targetGroupIds: [...src.targetGroupIds],
+    postedGroupIds: [],
+    postedAt: {},
     createdAt: now,
     updatedAt: now,
   }))!;
