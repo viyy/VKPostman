@@ -72,15 +72,18 @@ export const db = new VkPostmanDb();
 
 export async function createDraft(): Promise<number> {
   const now = new Date();
-  return db.drafts.add({
+  // add() is typed Promise<number | undefined> because the entity's `id` is
+  // optional; for an autoincrement key it's always a number — assert it.
+  return (await db.drafts.add({
     title: `Draft — ${now.toLocaleString()}`,
     commonText: '',
     placeholderValues: {},
     themeTags: [],
     targetGroupIds: [],
+    postedGroupIds: [],
     createdAt: now,
     updatedAt: now,
-  });
+  }))!;
 }
 
 export async function saveDraft(draft: PostDraft): Promise<void> {
@@ -94,14 +97,14 @@ export async function deleteDraft(id: number): Promise<void> {
 
 export async function createTemplate(): Promise<number> {
   const now = new Date();
-  return db.templates.add({
+  return (await db.templates.add({
     name: 'New template',
     description: '',
     bodyTemplate: '{{ common_text }}\n\n{{ group_tags }} {{ theme_tags }}',
     defaultThemeTags: [],
     createdAt: now,
     updatedAt: now,
-  });
+  }))!;
 }
 
 export async function saveTemplate(template: PostTemplate): Promise<void> {
@@ -115,14 +118,14 @@ export async function deleteTemplate(id: number): Promise<void> {
 
 export async function createGroup(screenName: string): Promise<number> {
   const cleaned = screenName.trim().replace(/^@/, '');
-  return db.groups.add({
+  return (await db.groups.add({
     screenName: cleaned,
     displayName: cleaned || 'New group',
     mandatoryTags: [],
     isActive: true,
     notes: '',
     createdAt: new Date(),
-  });
+  }))!;
 }
 
 export async function saveGroup(group: TargetGroup): Promise<void> {

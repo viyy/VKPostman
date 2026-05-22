@@ -59,6 +59,8 @@ export interface PostDraft {
   /** Tags common to every selected group; prepended by renderer. */
   themeTags: string[];
   targetGroupIds: number[];
+  /** Group ids the user has marked as already posted (per-draft progress tracking). */
+  postedGroupIds: number[];
   createdAt: Date;
   updatedAt: Date;
 }

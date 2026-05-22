@@ -91,6 +91,31 @@
     );
   }
 
+  /** Library entries whose key isn't referenced by any template body. */
+  const unusedPlaceholders = $derived.by(() => {
+    if (!library) return [] as PlaceholderDefinition[];
+    const usedKeys = new Set<string>();
+    for (const t of templates) {
+      for (const k of extractLibraryPlaceholderKeys(t.bodyTemplate)) usedKeys.add(k);
+    }
+    return library.filter((d) => !usedKeys.has(d.key));
+  });
+
+  async function removeUnused() {
+    const orphans = unusedPlaceholders;
+    if (orphans.length === 0) return;
+    const names = orphans.map((o) => `{{ ${o.key} }}`).join(', ');
+    if (!confirm(`Delete ${orphans.length} placeholder(s) not referenced by any template?\n\n${names}`)) {
+      return;
+    }
+    // If the open editor is about to be deleted, close it first.
+    const editingDeleted = editing != null && orphans.some((o) => o.id === editing!.id);
+    for (const o of orphans) {
+      if (o.id != null) await deletePlaceholder(o.id);
+    }
+    if (editingDeleted) editing = null;
+  }
+
   const statusLabel = $derived.by(() => {
     switch (saveStatus) {
       case 'dirty':  return '…';
@@ -110,6 +135,14 @@
       <h3 style="margin: 0;">Placeholders</h3>
       <button class="btn btn-primary btn-sm" onclick={addNew}>+ New</button>
     </div>
+    {#if unusedPlaceholders.length > 0}
+      <button
+        class="btn btn-ghost btn-sm"
+        style="width: 100%; margin-bottom: 8px;"
+        onclick={removeUnused}
+        title="Delete placeholders not referenced by any template"
+      >🧹 Remove unused ({unusedPlaceholders.length})</button>
+    {/if}
     {#if !library}
       <p class="muted">Loading…</p>
     {:else if library.length === 0}
