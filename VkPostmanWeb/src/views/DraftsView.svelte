@@ -2,7 +2,6 @@
   import { liveQuery } from 'dexie';
   import { db, createDraft, duplicateDraft, saveDraft, deleteDraft } from '../lib/db';
   import {
-    isDraftReady,
     packWikiLink,
     renderDraftForGroup,
     splitWikiLink,
@@ -17,6 +16,9 @@
   } from '../lib/types';
   import { nav } from '../lib/nav.svelte';
   import { createAutosave, type AutosaveStatus } from '../lib/autosave';
+  import { knownTagsQuery } from '../lib/tags';
+  import { undo } from '../lib/undo.svelte';
+  import TagSuggestions from './TagSuggestions.svelte';
 
   /** Collapsed state for the collapsible blocks (persists across reloads). */
   let groupsCollapsed  = $state(localStorage.getItem('vkp.draftGroupsCollapsed') === '1');
@@ -53,11 +55,13 @@
   const groupsQuery    = liveQuery(() => db.groups.orderBy('displayName').toArray());
   const templatesQuery = liveQuery(() => db.templates.toArray());
   const libraryQuery   = liveQuery(() => db.placeholders.toArray());
+  const tagsQuery      = knownTagsQuery();
 
   let drafts    = $state<PostDraft[] | undefined>(undefined);
   let groups    = $state<TargetGroup[]>([]);
   let templates = $state<PostTemplate[]>([]);
   let library   = $state<PlaceholderDefinition[]>([]);
+  let knownTags = $state<string[]>([]);
 
   $effect(() => {
     const s = draftsQuery.subscribe({ next: (v) => (drafts = v) });
@@ -75,6 +79,15 @@
     const s = libraryQuery.subscribe({ next: (v) => (library = v) });
     return () => s.unsubscribe();
   });
+  $effect(() => {
+    const s = tagsQuery.subscribe({ next: (v) => (knownTags = v) });
+    return () => s.unsubscribe();
+  });
+
+  function addTag(tag: string) {
+    const cur = themeTagsInput.trim();
+    themeTagsInput = cur ? `${cur} ${tag}` : tag;
+  }
 
   // ---- Selection -----------------------------------------------------------
   let currentId = $state<number | null>(null);
@@ -164,7 +177,30 @@
     unionedPlaceholders(selectedGroups, templatesById, libraryByKey)
   );
 
-  const ready = $derived(draft ? isDraftReady(draft, selectedGroups) : false);
+  // Detailed readiness checks — what (if anything) is still missing.
+  const validationIssues = $derived.by(() => {
+    if (!draft) return [] as string[];
+    const issues: string[] = [];
+    if (selectedGroups.length === 0) issues.push('No target groups selected.');
+    for (const g of selectedGroups) {
+      if (g.postTemplateId == null) issues.push(`${g.displayName}: no template assigned.`);
+    }
+    for (const u of placeholders) {
+      const def = u.definition;
+      const raw = draft.placeholderValues[u.key] ?? '';
+      const filled =
+        def?.type === PlaceholderType.WikiLink
+          ? splitWikiLink(raw).target.trim().length > 0
+          : raw.trim().length > 0;
+      const hasDefault = !!(def?.defaultValue && def.defaultValue.trim());
+      if (!filled && !hasDefault) {
+        issues.push(`Missing value: ${def?.displayName ?? u.key} (${u.usedByGroups.join(', ')})`);
+      }
+    }
+    return issues;
+  });
+
+  const ready = $derived(draft != null && validationIssues.length === 0);
 
   // Per-group rendered output, re-computed whenever relevant state changes.
   const renders = $derived.by(() => {
@@ -217,7 +253,7 @@
   const filteredDrafts = $derived.by(() => {
     const list = drafts ?? [];
     const q = search.trim().toLowerCase();
-    return list.filter((d) => {
+    const matched = list.filter((d) => {
       // Status filter.
       if (statusFilter === 'posted' && !isFullyPosted(d)) return false;
       if (statusFilter === 'active' && isFullyPosted(d)) return false;
@@ -235,6 +271,8 @@
         );
       });
     });
+    // Pinned drafts float to the top; the query already orders by recency.
+    return [...matched].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   });
 
   // ---- Commands ------------------------------------------------------------
@@ -252,9 +290,18 @@
 
   async function remove() {
     if (!draft?.id) return;
-    if (!confirm('Delete this draft?')) return;
+    const snap = $state.snapshot(draft) as PostDraft;
     await deleteDraft(draft.id);
     currentId = null;
+    undo.offer(`Deleted draft “${snap.title}”`, async () => {
+      await db.drafts.put(snap);
+      currentId = snap.id ?? null;
+    });
+  }
+
+  function togglePin() {
+    if (!draft) return;
+    draft.pinned = !draft.pinned;
   }
 
   /** Clone the current draft (keeps content, resets posted progress). */
@@ -409,7 +456,7 @@
               onclick={() => d.id != null && selectDraft(d.id)}
             >
               <strong>
-                {#if isFullyPosted(d)}<span title="All target groups posted">✓ </span>{/if}{d.title}
+                {#if d.pinned}<span title="Pinned">📌 </span>{/if}{#if isFullyPosted(d)}<span title="All target groups posted">✓ </span>{/if}{d.title}
               </strong>
               <span class="meta">{new Date(d.updatedAt).toLocaleString()}</span>
             </button>
@@ -445,10 +492,23 @@
               {ready ? 'ready to copy' : 'incomplete'}
             </span>
             <span class="muted" style="min-width: 5rem; text-align: right;">{statusLabel}</span>
+            <button
+              class="btn btn-ghost btn-sm"
+              title={draft.pinned ? 'Unpin' : 'Pin to top'}
+              onclick={togglePin}
+            >{draft.pinned ? '📌 Pinned' : '📌 Pin'}</button>
             <button class="btn btn-ghost btn-sm" onclick={duplicate}>⧉ Duplicate</button>
             <button class="btn btn-danger btn-sm" onclick={remove}>🗑 Delete</button>
           </div>
         </div>
+
+        {#if !ready && validationIssues.length > 0}
+          <ul class="issues">
+            {#each validationIssues as issue (issue)}
+              <li>⚠ {issue}</li>
+            {/each}
+          </ul>
+        {/if}
 
         {#if !detailsCollapsed}
         <div class="stack-lg">
@@ -467,6 +527,7 @@
           <div class="stack">
             <label for="d-tags">Theme tags (common to all groups)</label>
             <input id="d-tags" type="text" bind:value={themeTagsInput} />
+            <TagSuggestions tags={knownTags} current={themeTagsInput} onpick={addTag} />
           </div>
         </div>
         {/if}
@@ -683,6 +744,18 @@
     font-weight: 500;
     margin-bottom: 4px;
   }
+
+  /* Validation issues panel on the Draft details card. */
+  .issues {
+    margin: 0 0 0.6rem;
+    padding: 0.5rem 0.75rem;
+    list-style: none;
+    background: var(--vk-banner-err-bg);
+    color: var(--vk-banner-err-fg);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+  }
+  .issues li { margin: 0.1rem 0; }
 
   /* Segmented status filter above the draft list. */
   .seg {

@@ -11,17 +11,23 @@
     BUILT_IN_PLACEHOLDERS,
     extractLibraryPlaceholderKeys,
     isBuiltInPlaceholder,
+    renderTemplatePreview,
   } from '../lib/render';
   import { nav } from '../lib/nav.svelte';
+  import { knownTagsQuery } from '../lib/tags';
+  import { undo } from '../lib/undo.svelte';
+  import TagSuggestions from './TagSuggestions.svelte';
   import { tick } from 'svelte';
 
   const templatesQuery = liveQuery(() => db.templates.orderBy('updatedAt').reverse().toArray());
   const libraryQuery   = liveQuery(() => db.placeholders.orderBy('key').toArray());
   const groupsQuery    = liveQuery(() => db.groups.toArray());
+  const tagsQuery      = knownTagsQuery();
 
   let templates = $state<PostTemplate[] | undefined>(undefined);
   let library = $state<PlaceholderDefinition[]>([]);
   let groups = $state<TargetGroup[]>([]);
+  let knownTags = $state<string[]>([]);
 
   $effect(() => {
     const s = templatesQuery.subscribe({ next: (v) => (templates = v) });
@@ -35,6 +41,22 @@
     const s = groupsQuery.subscribe({ next: (v) => (groups = v) });
     return () => s.unsubscribe();
   });
+  $effect(() => {
+    const s = tagsQuery.subscribe({ next: (v) => (knownTags = v) });
+    return () => s.unsubscribe();
+  });
+
+  const libraryByKey = $derived(new Map(library.map((d) => [d.key, d])));
+
+  /** Live preview of the body filled with sample values. */
+  const preview = $derived.by(() =>
+    editing ? renderTemplatePreview(editing.bodyTemplate ?? '', libraryByKey, editing.defaultThemeTags) : '',
+  );
+
+  function addTag(tag: string) {
+    const cur = defaultTagsInput.trim();
+    defaultTagsInput = cur ? `${cur} ${tag}` : tag;
+  }
 
   // ---- Search (by template name, or a using group's name / alias) ----------
   let search = $state('');
@@ -127,9 +149,10 @@
 
   async function remove(t: PostTemplate) {
     if (!t.id) return;
-    if (!confirm(`Delete template "${t.name}"?`)) return;
+    const snap = $state.snapshot(t) as PostTemplate;
     await deleteTemplate(t.id);
     if (editing?.id === t.id) editing = null;
+    undo.offer(`Deleted template “${snap.name}”`, async () => { await db.templates.put(snap); });
   }
 
   // ---- Body editor state (chip toolbar + autocomplete + auto-sync) ---------
@@ -348,9 +371,16 @@
             New keys auto-appear on the Placeholders tab.
           </span>
         </div>
+
+        <div class="stack">
+          <div class="field-label">Live preview <span class="muted">(sample values)</span></div>
+          <div class="rendered">{preview}</div>
+        </div>
+
         <div class="stack">
           <label for="t-dtags">Default theme tags</label>
           <input id="t-dtags" type="text" bind:value={defaultTagsInput} />
+          <TagSuggestions tags={knownTags} current={defaultTagsInput} onpick={addTag} />
         </div>
 
         <div>

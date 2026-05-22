@@ -5,6 +5,7 @@
   import PlaceholdersView from './views/PlaceholdersView.svelte';
   import { downloadExport, exportAll, importFromFile } from './lib/exchange';
   import { nav, type Tab } from './lib/nav.svelte';
+  import { undo } from './lib/undo.svelte';
 
   // Restore the last-used tab, then persist any change. The active tab itself
   // lives in the shared nav store so other views can switch tabs (e.g. a
@@ -172,6 +173,14 @@
     style="display: none;"
     onchange={onImportPicked}
   />
+
+  {#if undo.message}
+    <div class="undo-toast" role="status">
+      <span>{undo.message}</span>
+      <button class="undo-btn" onclick={() => undo.undo()}>Undo</button>
+      <button class="undo-x" aria-label="Dismiss" onclick={() => undo.dismiss()}>✕</button>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -194,4 +203,46 @@
   }
   .io-banner.ok  { background: var(--vk-banner-ok-bg); color: var(--vk-banner-ok-fg); }
   .io-banner.err { background: var(--vk-banner-err-bg); color: var(--vk-banner-err-fg); }
+
+  .undo-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 1.25rem;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--vk-text);
+    color: var(--vk-bg);
+    padding: 0.55rem 0.6rem 0.55rem 1rem;
+    border-radius: 999px;
+    box-shadow: var(--shadow-md);
+    z-index: 100;
+    font-size: 0.9rem;
+    max-width: calc(100vw - 2rem);
+  }
+  .undo-btn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--vk-blue);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+  }
+  .undo-btn:hover { background: rgba(127, 127, 127, 0.2); }
+  .undo-x {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: inherit;
+    opacity: 0.6;
+    font: inherit;
+    cursor: pointer;
+    padding: 0.2rem 0.45rem;
+    border-radius: 6px;
+  }
+  .undo-x:hover { opacity: 1; background: rgba(127, 127, 127, 0.2); }
 </style>

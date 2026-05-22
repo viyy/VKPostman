@@ -150,6 +150,45 @@ export function renderDraftForGroup(
 }
 
 // ---------------------------------------------------------------------------
+// Live-preview rendering for the template editor: fill the body with plausible
+// sample values so the author can see the shape of a real post.
+// ---------------------------------------------------------------------------
+
+/** A representative sample value for a placeholder, used only in previews. */
+export function sampleValueFor(def: PlaceholderDefinition | undefined, key: string): string {
+  if (def?.defaultValue && def.defaultValue.trim()) return def.defaultValue;
+  switch (def?.type) {
+    case PlaceholderType.VkLink:   return '@example';
+    case PlaceholderType.WikiLink: return '[example|Example Page]';
+    case PlaceholderType.Url:      return 'https://example.com';
+    case PlaceholderType.TagList:  return '#sample #tags';
+    default:                       return def?.displayName ?? key;
+  }
+}
+
+/**
+ * Render a template body with sample data for the editor preview. Built-ins get
+ * fixed sample text; library keys get `sampleValueFor`. `themeTags` (the
+ * template's defaults) are used for {{ theme_tags }} when present.
+ */
+export function renderTemplatePreview(
+  body: string,
+  library: Map<string, PlaceholderDefinition>,
+  themeTags: string[] = [],
+): string {
+  const ctx: Record<string, string> = {
+    group_name:  'Sample Group',
+    group_tags:  '#group_tag',
+    theme_tags:  (themeTags.length ? themeTags : ['theme']).map(hashify).join(' '),
+    common_text: 'Sample common text from the draft.',
+  };
+  for (const key of extractLibraryPlaceholderKeys(body)) {
+    ctx[key] = sampleValueFor(library.get(key), key);
+  }
+  return renderTemplate(body, ctx);
+}
+
+// ---------------------------------------------------------------------------
 // Union of placeholder keys across the selected groups' templates.
 // ---------------------------------------------------------------------------
 

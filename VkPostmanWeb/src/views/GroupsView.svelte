@@ -3,13 +3,18 @@
   import { db, createGroup, saveGroup, deleteGroup } from '../lib/db';
   import type { TargetGroup } from '../lib/types';
   import { createAutosave, type AutosaveStatus } from '../lib/autosave';
+  import { knownTagsQuery } from '../lib/tags';
+  import { undo } from '../lib/undo.svelte';
+  import TagSuggestions from './TagSuggestions.svelte';
 
   // Live IndexedDB queries — re-run automatically when the data changes.
   const groupsQuery = liveQuery(() => db.groups.orderBy('displayName').toArray());
   const templatesQuery = liveQuery(() => db.templates.orderBy('name').toArray());
+  const tagsQuery = knownTagsQuery();
 
   let groups = $state<TargetGroup[] | undefined>(undefined);
   let templates = $state<Array<{ id?: number; name: string }>>([]);
+  let knownTags = $state<string[]>([]);
 
   $effect(() => {
     const sub = groupsQuery.subscribe({ next: (v) => (groups = v) });
@@ -19,6 +24,15 @@
     const sub = templatesQuery.subscribe({ next: (v) => (templates = v) });
     return () => sub.unsubscribe();
   });
+  $effect(() => {
+    const sub = tagsQuery.subscribe({ next: (v) => (knownTags = v) });
+    return () => sub.unsubscribe();
+  });
+
+  function addTag(tag: string) {
+    const cur = tagsInput.trim();
+    tagsInput = cur ? `${cur} ${tag}` : tag;
+  }
 
   let editing = $state<TargetGroup | null>(null);
   let tagsInput = $state('');
@@ -27,14 +41,17 @@
   // ---- Search (by group name, alias, or assigned template name) ------------
   let search = $state('');
   const filteredGroups = $derived.by(() => {
-    const list = groups ?? [];
     const q = search.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(
+    const list = (groups ?? []).filter(
       (g) =>
+        !q ||
         g.displayName.toLowerCase().includes(q) ||
         g.screenName.toLowerCase().includes(q) ||
         templateName(g.postTemplateId).toLowerCase().includes(q),
+    );
+    // Pinned groups float to the top; otherwise keep the query's name order.
+    return [...list].sort(
+      (a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || a.displayName.localeCompare(b.displayName),
     );
   });
 
@@ -79,9 +96,10 @@
 
   async function removeGroup(g: TargetGroup) {
     if (!g.id) return;
-    if (!confirm(`Delete group "${g.displayName}"?`)) return;
+    const snap = $state.snapshot(g) as TargetGroup;
     await deleteGroup(g.id);
     if (editing?.id === g.id) editing = null;
+    undo.offer(`Deleted group “${snap.displayName}”`, async () => { await db.groups.put(snap); });
   }
 
   function templateName(id?: number): string {
@@ -129,7 +147,7 @@
               class:active={editing?.id === g.id}
               onclick={() => edit(g)}
             >
-              <strong>{g.displayName}</strong>
+              <strong>{#if g.pinned}<span title="Pinned">📌 </span>{/if}{g.displayName}</strong>
               <span class="meta">
                 @{g.screenName} · template: <em>{templateName(g.postTemplateId)}</em>
               </span>
@@ -194,11 +212,20 @@
         <div class="stack">
           <label for="g-tags">Mandatory tags (space-separated)</label>
           <input id="g-tags" type="text" bind:value={tagsInput} />
+          <TagSuggestions tags={knownTags} current={tagsInput} onpick={addTag} />
           <span class="muted">Appended to posts via <code>{'{{ group_tags }}'}</code>.</span>
         </div>
         <label class="row" style="gap: 0.5rem; font-weight: 500;">
           <input type="checkbox" bind:checked={editing.isActive} />
           <span>Active</span>
+        </label>
+        <label class="row" style="gap: 0.5rem; font-weight: 500;">
+          <input
+            type="checkbox"
+            checked={editing.pinned ?? false}
+            onchange={(e) => (editing!.pinned = (e.currentTarget as HTMLInputElement).checked)}
+          />
+          <span>📌 Pin to top</span>
         </label>
         <div class="stack">
           <label for="g-notes">Notes</label>

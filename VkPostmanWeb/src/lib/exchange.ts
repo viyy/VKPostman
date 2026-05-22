@@ -151,12 +151,22 @@ export async function importFromJson(parsed: unknown): Promise<ImportSummary> {
           .map((oid) => groupIdMap.get(oid))
           .filter((v): v is number => v != null);
 
+      const remapPostedAt = (m: Record<number, string> | undefined) => {
+        const out: Record<number, string> = {};
+        for (const [k, v] of Object.entries(m ?? {})) {
+          const nid = groupIdMap.get(Number(k));
+          if (nid != null) out[nid] = v;
+        }
+        return out;
+      };
+
       for (const d of payload.drafts) {
         const { id: _omit, ...rest } = d as PostDraft & { id?: number };
         await db.drafts.add({
           ...rest,
           targetGroupIds: remapGroupIds(rest.targetGroupIds),
           postedGroupIds: remapGroupIds(rest.postedGroupIds),
+          postedAt: remapPostedAt(rest.postedAt),
           createdAt: coerceDate(rest.createdAt),
           updatedAt: coerceDate(rest.updatedAt),
         } as PostDraft);
@@ -283,6 +293,7 @@ function assertGroup(x: unknown, i: number): TargetGroup {
     postTemplateId: asOptionalInt(r.postTemplateId),
     isActive: r.isActive == null ? true : Boolean(r.isActive),
     notes: asStringOrEmpty(r.notes),
+    pinned: r.pinned == null ? undefined : Boolean(r.pinned),
     createdAt: coerceDate(r.createdAt),
   };
 }
@@ -297,11 +308,24 @@ function assertDraft(x: unknown, i: number): PostDraft {
     placeholderValues: asStringDict(r.placeholderValues),
     themeTags: asStringArray(r.themeTags),
     targetGroupIds: asArray(r.targetGroupIds).map((v) => Number(v)),
-    // Older exports (and v1 files) won't have this — default to empty.
+    // Older exports (and v1 files) won't have these — default to empty/undefined.
     postedGroupIds: asArray(r.postedGroupIds).map((v) => Number(v)),
+    postedAt: asPostedAt(r.postedAt),
+    pinned: r.pinned == null ? undefined : Boolean(r.pinned),
     createdAt: coerceDate(r.createdAt),
     updatedAt: coerceDate(r.updatedAt),
   };
+}
+
+/** Coerce a posted-at map (group id → ISO string), dropping bad entries. */
+function asPostedAt(v: unknown): Record<number, string> {
+  if (typeof v !== 'object' || v === null) return {};
+  const out: Record<number, string> = {};
+  for (const [k, val] of Object.entries(v)) {
+    const id = Number(k);
+    if (Number.isFinite(id) && typeof val === 'string') out[id] = val;
+  }
+  return out;
 }
 
 // ---- tiny coercions --------------------------------------------------------
