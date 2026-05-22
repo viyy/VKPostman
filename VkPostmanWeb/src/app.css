@@ -370,6 +370,11 @@ label {
   }
 }
 
+/* ===== Search box above a list ===== */
+.search-input {
+  margin-bottom: 0.6rem;
+}
+
 /* ===== List items ===== */
 .list {
   display: flex;

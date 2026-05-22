@@ -34,13 +34,11 @@
     theme = theme === 'dark' ? 'light' : 'dark';
   }
 
-  // Settings sheet state
-  let showMenu = $state(false);
+  // Import/export state
   let importInput: HTMLInputElement | undefined = $state();
   let ioMessage = $state<{ ok: boolean; text: string } | null>(null);
 
   async function doExport() {
-    showMenu = false;
     try {
       const data = await exportAll();
       downloadExport(data);
@@ -57,7 +55,6 @@
   }
 
   function doImportClick() {
-    showMenu = false;
     importInput?.click();
   }
 
@@ -100,27 +97,24 @@
       v{__APP_VERSION__} · offline · local-only
     </span>
     <div style="flex: 1;"></div>
-    <div class="menu-wrap">
-      <button
-        class="icon-btn"
-        onclick={() => (showMenu = !showMenu)}
-        aria-label="Settings menu"
-        aria-expanded={showMenu}
-      >⋯</button>
-      {#if showMenu}
-        <div class="menu" role="menu">
-          <button class="menu-item" role="menuitem" onclick={toggleTheme}>
-            {theme === 'dark' ? '☀️ Light theme' : '🌙 Dark theme'}
-          </button>
-          <button class="menu-item" role="menuitem" onclick={doExport}>
-            ⬇️ Export data (JSON)
-          </button>
-          <button class="menu-item" role="menuitem" onclick={doImportClick}>
-            ⬆️ Import data (JSON)
-          </button>
-        </div>
-      {/if}
-    </div>
+    <button
+      class="icon-btn"
+      onclick={toggleTheme}
+      aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+      title={theme === 'dark' ? 'Light theme' : 'Dark theme'}
+    >{theme === 'dark' ? '☀️' : '🌙'}</button>
+    <button
+      class="icon-btn"
+      onclick={doExport}
+      aria-label="Export data (JSON)"
+      title="Export data (JSON)"
+    >⬇️</button>
+    <button
+      class="icon-btn"
+      onclick={doImportClick}
+      aria-label="Import data (JSON)"
+      title="Import data (JSON)"
+    >⬆️</button>
   </div>
 
   {#if ioMessage}
@@ -180,12 +174,6 @@
   />
 </div>
 
-<svelte:window onclick={(e) => {
-  if (!showMenu) return;
-  const t = e.target as HTMLElement;
-  if (!t.closest?.('.menu-wrap')) showMenu = false;
-}} />
-
 <style>
   .icon-btn {
     appearance: none;
@@ -199,38 +187,6 @@
     cursor: pointer;
   }
   .icon-btn:hover { background: rgba(255, 255, 255, 0.15); }
-
-  .menu-wrap {
-    position: relative;
-  }
-  .menu {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 6px);
-    min-width: 220px;
-    background: var(--vk-surface);
-    color: var(--vk-text);
-    border: 1px solid var(--vk-border);
-    border-radius: 8px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.14), 0 4px 10px rgba(0, 0, 0, 0.06);
-    padding: 4px;
-    z-index: 50;
-  }
-  .menu-item {
-    display: block;
-    width: 100%;
-    text-align: left;
-    padding: 0.55rem 0.75rem;
-    appearance: none;
-    background: transparent;
-    border: none;
-    font-family: inherit;
-    font-size: 0.9rem;
-    color: inherit;
-    cursor: pointer;
-    border-radius: 4px;
-  }
-  .menu-item:hover { background: var(--vk-hover); }
 
   .io-banner {
     padding: 0.55rem 1rem;

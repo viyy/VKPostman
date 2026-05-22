@@ -4,6 +4,7 @@
   import {
     type PlaceholderDefinition,
     type PostTemplate,
+    type TargetGroup,
   } from '../lib/types';
   import { createAutosave, type AutosaveStatus } from '../lib/autosave';
   import {
@@ -16,9 +17,11 @@
 
   const templatesQuery = liveQuery(() => db.templates.orderBy('updatedAt').reverse().toArray());
   const libraryQuery   = liveQuery(() => db.placeholders.orderBy('key').toArray());
+  const groupsQuery    = liveQuery(() => db.groups.toArray());
 
   let templates = $state<PostTemplate[] | undefined>(undefined);
   let library = $state<PlaceholderDefinition[]>([]);
+  let groups = $state<TargetGroup[]>([]);
 
   $effect(() => {
     const s = templatesQuery.subscribe({ next: (v) => (templates = v) });
@@ -27,6 +30,40 @@
   $effect(() => {
     const s = libraryQuery.subscribe({ next: (v) => (library = v) });
     return () => s.unsubscribe();
+  });
+  $effect(() => {
+    const s = groupsQuery.subscribe({ next: (v) => (groups = v) });
+    return () => s.unsubscribe();
+  });
+
+  // ---- Search (by template name, or a using group's name / alias) ----------
+  let search = $state('');
+
+  const groupsByTemplateId = $derived.by(() => {
+    const m = new Map<number, TargetGroup[]>();
+    for (const g of groups) {
+      if (g.postTemplateId == null) continue;
+      const arr = m.get(g.postTemplateId) ?? [];
+      arr.push(g);
+      m.set(g.postTemplateId, arr);
+    }
+    return m;
+  });
+
+  const filteredTemplates = $derived.by(() => {
+    const list = templates ?? [];
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((t) => {
+      if (t.name.toLowerCase().includes(q)) return true;
+      if (t.description?.toLowerCase().includes(q)) return true;
+      const using = t.id != null ? groupsByTemplateId.get(t.id) ?? [] : [];
+      return using.some(
+        (g) =>
+          g.displayName.toLowerCase().includes(q) ||
+          g.screenName.toLowerCase().includes(q),
+      );
+    });
   });
 
   // Honour a "jump to this template" request from another tab (e.g. the
@@ -221,18 +258,29 @@
     {:else if templates.length === 0}
       <p class="muted">No templates yet.</p>
     {:else}
-      <div class="list">
-        {#each templates as t (t.id)}
-          <button
-            class="list-item"
-            class:active={editing?.id === t.id}
-            onclick={() => edit(t)}
-          >
-            <strong>{t.name}</strong>
-            <span class="meta">{new Date(t.updatedAt).toLocaleString()}</span>
-          </button>
-        {/each}
-      </div>
+      <input
+        type="text"
+        class="search-input"
+        placeholder="Search name, group, alias…"
+        bind:value={search}
+        aria-label="Search templates"
+      />
+      {#if filteredTemplates.length === 0}
+        <p class="muted">No templates match “{search}”.</p>
+      {:else}
+        <div class="list">
+          {#each filteredTemplates as t (t.id)}
+            <button
+              class="list-item"
+              class:active={editing?.id === t.id}
+              onclick={() => edit(t)}
+            >
+              <strong>{t.name}</strong>
+              <span class="meta">{new Date(t.updatedAt).toLocaleString()}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
     {/if}
   </aside>
 

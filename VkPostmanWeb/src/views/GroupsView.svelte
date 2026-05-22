@@ -24,6 +24,20 @@
   let tagsInput = $state('');
   let saveStatus = $state<AutosaveStatus>('idle');
 
+  // ---- Search (by group name, alias, or assigned template name) ------------
+  let search = $state('');
+  const filteredGroups = $derived.by(() => {
+    const list = groups ?? [];
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter(
+      (g) =>
+        g.displayName.toLowerCase().includes(q) ||
+        g.screenName.toLowerCase().includes(q) ||
+        templateName(g.postTemplateId).toLowerCase().includes(q),
+    );
+  });
+
   // Keep editing.mandatoryTags in sync with the input as the user types.
   $effect(() => {
     if (!editing) return;
@@ -98,20 +112,31 @@
     {:else if groups.length === 0}
       <p class="muted">No groups yet. Click <em>+ Add</em> to create one.</p>
     {:else}
-      <div class="list">
-        {#each groups as g (g.id)}
-          <button
-            class="list-item"
-            class:active={editing?.id === g.id}
-            onclick={() => edit(g)}
-          >
-            <strong>{g.displayName}</strong>
-            <span class="meta">
-              @{g.screenName} · template: <em>{templateName(g.postTemplateId)}</em>
-            </span>
-          </button>
-        {/each}
-      </div>
+      <input
+        type="text"
+        class="search-input"
+        placeholder="Search name, alias, template…"
+        bind:value={search}
+        aria-label="Search groups"
+      />
+      {#if filteredGroups.length === 0}
+        <p class="muted">No groups match “{search}”.</p>
+      {:else}
+        <div class="list">
+          {#each filteredGroups as g (g.id)}
+            <button
+              class="list-item"
+              class:active={editing?.id === g.id}
+              onclick={() => edit(g)}
+            >
+              <strong>{g.displayName}</strong>
+              <span class="meta">
+                @{g.screenName} · template: <em>{templateName(g.postTemplateId)}</em>
+              </span>
+            </button>
+          {/each}
+        </div>
+      {/if}
     {/if}
   </aside>
 
