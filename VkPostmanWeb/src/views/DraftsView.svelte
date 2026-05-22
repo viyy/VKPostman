@@ -18,10 +18,22 @@
   import { nav } from '../lib/nav.svelte';
   import { createAutosave, type AutosaveStatus } from '../lib/autosave';
 
-  /** Collapsed state for the Target groups block (persists across reloads). */
-  let groupsCollapsed = $state(localStorage.getItem('vkp.draftGroupsCollapsed') === '1');
+  /** Collapsed state for the collapsible blocks (persists across reloads). */
+  let groupsCollapsed  = $state(localStorage.getItem('vkp.draftGroupsCollapsed') === '1');
+  let detailsCollapsed = $state(localStorage.getItem('vkp.draftDetailsCollapsed') === '1');
+  let toPostCollapsed  = $state(localStorage.getItem('vkp.draftToPostCollapsed') === '1');
+  let postedCollapsed  = $state(localStorage.getItem('vkp.draftPostedCollapsed') === '1');
   $effect(() => {
     localStorage.setItem('vkp.draftGroupsCollapsed', groupsCollapsed ? '1' : '0');
+  });
+  $effect(() => {
+    localStorage.setItem('vkp.draftDetailsCollapsed', detailsCollapsed ? '1' : '0');
+  });
+  $effect(() => {
+    localStorage.setItem('vkp.draftToPostCollapsed', toPostCollapsed ? '1' : '0');
+  });
+  $effect(() => {
+    localStorage.setItem('vkp.draftPostedCollapsed', postedCollapsed ? '1' : '0');
   });
 
   let saveStatus = $state<AutosaveStatus>('idle');
@@ -294,9 +306,18 @@
     {:else}
       <div class="card">
         <div class="card-header">
-          <h3 style="margin: 0;">Draft details</h3>
+          <button
+            type="button"
+            class="collapse-header"
+            style="width: auto; margin-bottom: 0;"
+            aria-expanded={!detailsCollapsed}
+            onclick={() => (detailsCollapsed = !detailsCollapsed)}
+          >
+            <span class="collapse-chevron" class:collapsed={detailsCollapsed}>▾</span>
+            <h3 style="margin: 0;">Draft details</h3>
+          </button>
           <div class="row">
-            <span class="pill" style={ready ? '' : 'background:#eef0f3; color:var(--vk-text-secondary);'}>
+            <span class="pill" style={ready ? '' : 'background:var(--vk-hover); color:var(--vk-text-secondary);'}>
               {ready ? 'ready to copy' : 'incomplete'}
             </span>
             <span class="muted" style="min-width: 5rem; text-align: right;">{statusLabel}</span>
@@ -304,6 +325,7 @@
           </div>
         </div>
 
+        {#if !detailsCollapsed}
         <div class="stack-lg">
           <div class="stack">
             <label for="d-title">Title</label>
@@ -322,6 +344,7 @@
             <input id="d-tags" type="text" bind:value={themeTagsInput} />
           </div>
         </div>
+        {/if}
       </div>
 
       <!-- Target groups (collapsible) -->
@@ -432,51 +455,70 @@
 
   <!-- ==== Per-group output ==== -->
   <section>
-    <div class="card-header" style="padding-left: 4px;">
+    <button
+      type="button"
+      class="collapse-header"
+      style="padding-left: 4px;"
+      aria-expanded={!toPostCollapsed}
+      onclick={() => (toPostCollapsed = !toPostCollapsed)}
+    >
+      <span class="collapse-chevron" class:collapsed={toPostCollapsed}>▾</span>
       <h3 style="margin: 0;">To post</h3>
       {#if postedRenders.length > 0}
-        <span class="muted">{postedRenders.length} posted</span>
+        <span class="muted" style="margin-left: auto;">{postedRenders.length} posted</span>
       {/if}
-    </div>
+    </button>
 
-    {#if renders.length === 0}
-      <p class="muted">Pick one or more target groups on the left to see rendered posts.</p>
-    {:else if activeRenders.length === 0}
-      <p class="muted">All selected groups are marked posted. 🎉</p>
-    {:else}
-      {#each activeRenders as r (r.group.id)}
-        <div class="card">
-          <div class="card-header">
-            <strong>{r.group.displayName}</strong>
-            <div class="row">
-              <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}>📋 Copy</button>
-              <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}>🌐 Open vk.com</button>
-              <button class="btn btn-primary btn-sm" onclick={() => markPosted(r.group.id!)}>✓ Posted</button>
+    {#if !toPostCollapsed}
+      {#if renders.length === 0}
+        <p class="muted">Pick one or more target groups on the left to see rendered posts.</p>
+      {:else if activeRenders.length === 0}
+        <p class="muted">All selected groups are marked posted. 🎉</p>
+      {:else}
+        {#each activeRenders as r (r.group.id)}
+          <div class="card">
+            <div class="card-header">
+              <strong>{r.group.displayName}</strong>
+              <div class="row">
+                <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}>📋 Copy</button>
+                <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}>🌐 Open vk.com</button>
+                <button class="btn btn-primary btn-sm" onclick={() => markPosted(r.group.id!)}>✓ Posted</button>
+              </div>
             </div>
+            <div class="rendered">{r.text}</div>
           </div>
-          <div class="rendered">{r.text}</div>
-        </div>
-      {/each}
+        {/each}
+      {/if}
     {/if}
 
     <!-- Posted block -->
     {#if postedRenders.length > 0}
-      <div class="card-header" style="padding-left: 4px; margin-top: 1rem;">
+      <button
+        type="button"
+        class="collapse-header"
+        style="padding-left: 4px; margin-top: 1rem;"
+        aria-expanded={!postedCollapsed}
+        onclick={() => (postedCollapsed = !postedCollapsed)}
+      >
+        <span class="collapse-chevron" class:collapsed={postedCollapsed}>▾</span>
         <h3 style="margin: 0;">✓ Posted</h3>
-      </div>
-      {#each postedRenders as r (r.group.id)}
-        <div class="card posted-card">
-          <div class="card-header">
-            <strong>{r.group.displayName}</strong>
-            <div class="row">
-              <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}>📋 Copy</button>
-              <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}>🌐 Open vk.com</button>
-              <button class="btn btn-ghost btn-sm" onclick={() => unmarkPosted(r.group.id!)}>↩ Unmark</button>
+        <span class="muted" style="margin-left: auto;">{postedRenders.length}</span>
+      </button>
+      {#if !postedCollapsed}
+        {#each postedRenders as r (r.group.id)}
+          <div class="card posted-card">
+            <div class="card-header">
+              <strong>{r.group.displayName}</strong>
+              <div class="row">
+                <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}>📋 Copy</button>
+                <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}>🌐 Open vk.com</button>
+                <button class="btn btn-ghost btn-sm" onclick={() => unmarkPosted(r.group.id!)}>↩ Unmark</button>
+              </div>
             </div>
+            <div class="rendered">{r.text}</div>
           </div>
-          <div class="rendered">{r.text}</div>
-        </div>
-      {/each}
+        {/each}
+      {/if}
     {/if}
   </section>
 </div>
