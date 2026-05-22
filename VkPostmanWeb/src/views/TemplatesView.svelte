@@ -369,6 +369,8 @@
           <span class="muted">
             Scriban-like <code>{'{{ placeholder }}'}</code> syntax.
             New keys auto-appear on the Placeholders tab.
+            Optional blocks: <code>{'{{#if key}}…{{else}}…{{/if}}'}</code>
+            and <code>{'{{#unless key}}…{{/unless}}'}</code> — shown only when the value is filled.
           </span>
         </div>
 

@@ -153,6 +153,7 @@
         postedGroupIds: [...(d.postedGroupIds ?? [])],
         postedAt: { ...(d.postedAt ?? {}) },
         imageNotes: [...(d.imageNotes ?? [])],
+        notes: d.notes ?? '',
       };
       themeTagsInput = draft.themeTags.join(' ');
       // Adopt the freshly-loaded draft as the autosave baseline so merely
@@ -166,6 +167,14 @@
     if (currentId == null && drafts && drafts.length > 0) {
       currentId = drafts[0].id!;
     }
+  });
+
+  // Honour an "open this draft" request (cross-tab links / global search).
+  $effect(() => {
+    const id = nav.requestedDraftId;
+    if (id == null) return;
+    nav.requestedDraftId = null;
+    void selectDraft(id);
   });
 
   // ---- Autosave ------------------------------------------------------------
@@ -660,6 +669,15 @@
               </ul>
             {/if}
           </div>
+
+          <div class="stack">
+            <label for="d-notes">Scratch notes <span class="muted">(private, not posted)</span></label>
+            <textarea
+              id="d-notes"
+              bind:value={draft.notes}
+              placeholder="Reminders, ideas, to-dos for this post…"
+            ></textarea>
+          </div>
         </div>
         {/if}
       </div>
@@ -878,6 +896,16 @@
     {/if}
   </section>
 </div>
+
+<!-- Ctrl/Cmd+Enter anywhere on the Drafts tab → copy next unposted & open. -->
+<svelte:window
+  onkeydown={(e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && activeRenders.length > 0) {
+      e.preventDefault();
+      void copyNextAndOpen();
+    }
+  }}
+/>
 
 <style>
   /* Dim posted cards so the eye lands on what's still to do. */

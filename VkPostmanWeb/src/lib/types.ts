@@ -65,6 +65,8 @@ export interface PostDraft {
    * the text only (browsers can't read real file paths) — a reminder checklist.
    */
   imageNotes?: string[];
+  /** Free-text scratch notes for the author (not rendered into posts). */
+  notes?: string;
   targetGroupIds: number[];
   /** Group ids the user has marked as already posted (per-draft progress tracking). */
   postedGroupIds: number[];

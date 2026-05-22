@@ -7,9 +7,10 @@
   import { downloadExport, exportAll, importFromFile } from './lib/exchange';
   import { nav, type Tab } from './lib/nav.svelte';
   import { undo } from './lib/undo.svelte';
-  import { db } from './lib/db';
+  import { db, createDraft } from './lib/db';
   import { formatBytes, getStorageInfo, requestPersistentStorage, type StorageInfo } from './lib/storage';
   import DataModal from './views/DataModal.svelte';
+  import GlobalSearch from './views/GlobalSearch.svelte';
 
   // Restore the last-used tab, then persist any change. The active tab itself
   // lives in the shared nav store so other views can switch tabs (e.g. a
@@ -89,8 +90,47 @@
     return () => clearInterval(id);
   });
 
-  // ---- Data tools modal ----------------------------------------------------
+  // ---- Modals + keyboard shortcuts -----------------------------------------
   let showData = $state(false);
+  let showSearch = $state(false);
+  let showShortcuts = $state(false);
+
+  async function newDraftShortcut() {
+    const id = await createDraft();
+    nav.openDraft(id);
+  }
+
+  function onGlobalKeydown(e: KeyboardEvent) {
+    const mod = e.ctrlKey || e.metaKey;
+
+    // Ctrl/Cmd+K → global search (works even while typing).
+    if (mod && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      showSearch = true;
+      return;
+    }
+    if (e.key === 'Escape') {
+      showSearch = false;
+      showShortcuts = false;
+      showData = false;
+      return;
+    }
+
+    // Remaining shortcuts are inert while typing or with a modifier held.
+    const el = document.activeElement as HTMLElement | null;
+    const typing =
+      !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+    if (typing || mod) return;
+
+    if (e.altKey) {
+      const tabs: Record<string, Tab> = { '1': 'drafts', '2': 'templates', '3': 'placeholders', '4': 'groups', '5': 'stats' };
+      const t = tabs[e.key];
+      if (t) { e.preventDefault(); nav.tab = t; }
+      return;
+    }
+    if (e.key === 'n') { e.preventDefault(); void newDraftShortcut(); }
+    else if (e.key === '?') { e.preventDefault(); showShortcuts = !showShortcuts; }
+  }
 
   async function doExport() {
     try {
@@ -166,6 +206,12 @@
         {storage.persisted ? '🔒' : '💾'} {formatBytes(storage.usage)}
       </button>
     {/if}
+    <button
+      class="icon-btn"
+      onclick={() => (showSearch = true)}
+      aria-label="Search (Ctrl+K)"
+      title="Search everything (Ctrl+K)"
+    >🔍</button>
     <button
       class="icon-btn"
       onclick={toggleTheme}
@@ -281,7 +327,34 @@
       onresult={(msg) => { ioMessage = msg; void refreshStorage(); }}
     />
   {/if}
+
+  {#if showSearch}
+    <GlobalSearch onclose={() => (showSearch = false)} />
+  {/if}
+
+  {#if showShortcuts}
+    <div class="overlay" role="presentation" onclick={() => (showShortcuts = false)}>
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <div class="sc-modal" role="dialog" aria-modal="true" tabindex="-1" aria-label="Keyboard shortcuts" onclick={(e) => e.stopPropagation()}>
+        <div class="card-header">
+          <h3 style="margin: 0;">Keyboard shortcuts</h3>
+          <button class="btn btn-ghost btn-sm" onclick={() => (showShortcuts = false)}>Close</button>
+        </div>
+        <dl class="sc-list">
+          <dt><kbd>Ctrl</kbd>+<kbd>K</kbd></dt><dd>Open global search</dd>
+          <dt><kbd>N</kbd></dt><dd>New draft</dd>
+          <dt><kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>5</kbd></dt><dd>Switch tabs (Drafts / Templates / Placeholders / Groups / Stats)</dd>
+          <dt><kbd>Ctrl</kbd>+<kbd>Enter</kbd></dt><dd>On Drafts: copy next unposted &amp; open vk.com</dd>
+          <dt><kbd>?</kbd></dt><dd>Toggle this help</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Close dialogs</dd>
+        </dl>
+        <p class="muted" style="margin: 0.5rem 0 0;">Letter shortcuts are ignored while typing in a field.</p>
+      </div>
+    </div>
+  {/if}
 </div>
+
+<svelte:window onkeydown={onGlobalKeydown} />
 
 <style>
   .icon-btn {
@@ -331,6 +404,43 @@
     padding: 0.1rem 0.3rem;
   }
   .link-inline.muted-link { font-weight: 500; opacity: 0.8; }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 4rem 1rem;
+    z-index: 90;
+  }
+  .sc-modal {
+    background: var(--vk-surface);
+    border: 1px solid var(--vk-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    padding: 1rem;
+    width: 100%;
+    max-width: 460px;
+  }
+  .sc-list {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.4rem 1rem;
+    margin: 0;
+    align-items: baseline;
+  }
+  .sc-list dt { white-space: nowrap; }
+  .sc-list dd { margin: 0; color: var(--vk-text-secondary); }
+  kbd {
+    font-family: 'JetBrains Mono', Consolas, monospace;
+    font-size: 0.8rem;
+    background: var(--vk-surface-alt);
+    border: 1px solid var(--vk-border-strong);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
 
   .io-banner {
     padding: 0.55rem 1rem;

@@ -461,6 +461,7 @@ function assertDraft(x: unknown, i: number): PostDraft {
     placeholderValues: asStringDict(r.placeholderValues),
     themeTags: asStringArray(r.themeTags),
     imageNotes: asStringArray(r.imageNotes),
+    notes: asStringOrEmpty(r.notes),
     targetGroupIds: asArray(r.targetGroupIds).map((v) => Number(v)),
     // Older exports (and v1 files) won't have these — default to empty/undefined.
     postedGroupIds: asArray(r.postedGroupIds).map((v) => Number(v)),
