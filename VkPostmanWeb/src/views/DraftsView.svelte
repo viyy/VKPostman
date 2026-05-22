@@ -89,6 +89,44 @@
     themeTagsInput = cur ? `${cur} ${tag}` : tag;
   }
 
+  // ---- Image attachment notes (filenames/paths only) -----------------------
+  let imageNoteInput = $state('');
+  let dragOver = $state(false);
+
+  function addImageNotes(names: string[]) {
+    if (!draft) return;
+    const cleaned = names.map((n) => n.trim()).filter(Boolean);
+    if (cleaned.length === 0) return;
+    const existing = new Set(draft.imageNotes ?? []);
+    const merged = [...(draft.imageNotes ?? [])];
+    for (const n of cleaned) if (!existing.has(n)) merged.push(n);
+    draft.imageNotes = merged;
+  }
+
+  function addImageNoteFromInput() {
+    if (!imageNoteInput.trim()) return;
+    addImageNotes([imageNoteInput]);
+    imageNoteInput = '';
+  }
+
+  function removeImageNote(name: string) {
+    if (!draft) return;
+    draft.imageNotes = (draft.imageNotes ?? []).filter((n) => n !== name);
+  }
+
+  function onImageDrop(e: DragEvent) {
+    e.preventDefault();
+    dragOver = false;
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      addImageNotes([...files].map((f) => f.name));
+    } else {
+      // Plain-text drops (e.g. a path dragged from another field).
+      const text = e.dataTransfer?.getData('text');
+      if (text) addImageNotes(text.split(/[\r\n]+/));
+    }
+  }
+
   // ---- Selection -----------------------------------------------------------
   let currentId = $state<number | null>(null);
   let draft = $state<PostDraft | null>(null);
@@ -114,6 +152,7 @@
         // Older drafts predate posted tracking — default to empty.
         postedGroupIds: [...(d.postedGroupIds ?? [])],
         postedAt: { ...(d.postedAt ?? {}) },
+        imageNotes: [...(d.imageNotes ?? [])],
       };
       themeTagsInput = draft.themeTags.join(' ');
       // Adopt the freshly-loaded draft as the autosave baseline so merely
@@ -438,7 +477,7 @@
         <button
           class="seg-btn" class:active={statusFilter === 'active'}
           onclick={() => (statusFilter = 'active')}
-        >In progress</button>
+        >Active</button>
         <button
           class="seg-btn" class:active={statusFilter === 'posted'}
           onclick={() => (statusFilter = 'posted')}
@@ -485,20 +524,32 @@
             onclick={() => (detailsCollapsed = !detailsCollapsed)}
           >
             <span class="collapse-chevron" class:collapsed={detailsCollapsed}>▾</span>
-            <h3 style="margin: 0;">Draft details</h3>
+            <h3 style="margin: 0; white-space: nowrap;">Draft details</h3>
           </button>
-          <div class="row">
+          <div class="row" style="flex-wrap: nowrap;">
             <span class="pill" style={ready ? '' : 'background:var(--vk-hover); color:var(--vk-text-secondary);'}>
-              {ready ? 'ready to copy' : 'incomplete'}
+              {ready ? 'ready' : 'incomplete'}
             </span>
-            <span class="muted" style="min-width: 5rem; text-align: right;">{statusLabel}</span>
+            <span class="muted" style="text-align: right;">{statusLabel}</span>
             <button
-              class="btn btn-ghost btn-sm"
+              class="btn btn-ghost btn-sm icon-only"
+              class:pinned={draft.pinned}
               title={draft.pinned ? 'Unpin' : 'Pin to top'}
+              aria-label={draft.pinned ? 'Unpin' : 'Pin to top'}
               onclick={togglePin}
-            >{draft.pinned ? '📌 Pinned' : '📌 Pin'}</button>
-            <button class="btn btn-ghost btn-sm" onclick={duplicate}>⧉ Duplicate</button>
-            <button class="btn btn-danger btn-sm" onclick={remove}>🗑 Delete</button>
+            >📌</button>
+            <button
+              class="btn btn-ghost btn-sm icon-only"
+              title="Duplicate"
+              aria-label="Duplicate draft"
+              onclick={duplicate}
+            >⧉</button>
+            <button
+              class="btn btn-danger btn-sm icon-only"
+              title="Delete"
+              aria-label="Delete draft"
+              onclick={remove}
+            >🗑</button>
           </div>
         </div>
 
@@ -528,6 +579,48 @@
             <label for="d-tags">Theme tags (common to all groups)</label>
             <input id="d-tags" type="text" bind:value={themeTagsInput} />
             <TagSuggestions tags={knownTags} current={themeTagsInput} onpick={addTag} />
+          </div>
+
+          <div class="stack">
+            <div class="field-label">
+              Images to attach
+              <span class="muted">&nbsp;(filenames/paths — a manual checklist, files aren't stored)</span>
+            </div>
+            <div
+              class="dropzone"
+              class:drag-over={dragOver}
+              role="button"
+              tabindex="0"
+              ondragover={(e) => { e.preventDefault(); dragOver = true; }}
+              ondragleave={() => (dragOver = false)}
+              ondrop={onImageDrop}
+            >
+              Drop image files here to add their names
+            </div>
+            <div class="row" style="gap: 0.4rem;">
+              <input
+                type="text"
+                class="grow"
+                placeholder="…or type a filename/path and press Enter"
+                bind:value={imageNoteInput}
+                onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addImageNoteFromInput(); } }}
+              />
+              <button class="btn btn-outline btn-sm" onclick={addImageNoteFromInput}>+ Add</button>
+            </div>
+            {#if (draft.imageNotes ?? []).length > 0}
+              <ul class="image-list">
+                {#each draft.imageNotes ?? [] as name (name)}
+                  <li>
+                    <span class="img-name">🖼 {name}</span>
+                    <button
+                      class="img-remove"
+                      aria-label={`Remove ${name}`}
+                      onclick={() => removeImageNote(name)}
+                    >✕</button>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
           </div>
         </div>
         {/if}
@@ -745,6 +838,66 @@
     margin-bottom: 4px;
   }
 
+  /* Compact icon-only action buttons in the Draft details header. */
+  .icon-only {
+    padding-left: 0.45rem;
+    padding-right: 0.45rem;
+  }
+  .icon-only.pinned {
+    background: var(--vk-accent);
+    border-color: var(--vk-blue);
+  }
+
+  /* Image attachment checklist. */
+  .dropzone {
+    border: 1.5px dashed var(--vk-border-strong);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem;
+    text-align: center;
+    color: var(--vk-text-secondary);
+    font-size: 0.85rem;
+    transition: background 120ms, border-color 120ms, color 120ms;
+  }
+  .dropzone.drag-over {
+    border-color: var(--vk-blue);
+    background: var(--vk-accent);
+    color: var(--vk-blue);
+  }
+  .image-list {
+    list-style: none;
+    margin: 0.25rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .image-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--vk-border);
+    border-radius: var(--radius-sm);
+  }
+  .image-list .img-name {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-family: 'JetBrains Mono', Consolas, monospace;
+    font-size: 0.82rem;
+  }
+  .img-remove {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--vk-text-secondary);
+    cursor: pointer;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+  }
+  .img-remove:hover { background: var(--vk-danger-bg); color: var(--vk-danger); }
+
   /* Validation issues panel on the Draft details card. */
   .issues {
     margin: 0 0 0.6rem;
@@ -778,6 +931,7 @@
     padding: 0.3rem 0.4rem;
     border-radius: calc(var(--radius-sm) - 2px);
     cursor: pointer;
+    white-space: nowrap;
     transition: background 120ms, color 120ms;
   }
   .seg-btn:hover { color: var(--vk-text); }

@@ -2,7 +2,7 @@
 // be shared across components — App.svelte reads `tab`, and any view can ask
 // to jump to a specific record (e.g. Drafts → open a template in Templates).
 
-export type Tab = 'drafts' | 'templates' | 'placeholders' | 'groups';
+export type Tab = 'drafts' | 'templates' | 'placeholders' | 'groups' | 'stats';
 
 class Nav {
   /** The active top-level tab. App.svelte renders the matching view. */
