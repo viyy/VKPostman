@@ -91,19 +91,28 @@ export function isBuiltInPlaceholder(key: string): boolean {
   return (BUILT_IN_PLACEHOLDERS as readonly string[]).includes(key);
 }
 
+/** Control keywords that look like placeholders in {{ … }} but aren't. */
+const RESERVED_KEYS = new Set(['if', 'unless', 'else']);
+
 export function extractPlaceholderKeys(body: string): string[] {
   if (!body) return [];
   const seen = new Set<string>();
   const result: string[] = [];
+  const add = (key: string) => {
+    if (RESERVED_KEYS.has(key) || seen.has(key)) return;
+    seen.add(key);
+    result.push(key);
+  };
+
+  // Plain {{ key }} substitutions.
   const re = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(body)) !== null) {
-    const key = m[1];
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push(key);
-    }
-  }
+  while ((m = re.exec(body)) !== null) add(m[1]);
+
+  // Keys referenced only in a condition: {{#if key}} / {{#unless key}}.
+  const cond = /\{\{\s*#(?:if|unless)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
+  while ((m = cond.exec(body)) !== null) add(m[1]);
+
   return result;
 }
 
@@ -117,8 +126,28 @@ export function extractLibraryPlaceholderKeys(body: string): string[] {
 
 const EXPR_RE = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
 
+// Innermost {{#if key}}…{{/if}} or {{#unless key}}…{{/unless}} block (optionally
+// with {{else}}). The negative lookahead keeps the match innermost so nested
+// blocks resolve from the inside out across repeated passes.
+const COND_RE =
+  /\{\{\s*#(if|unless)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\}\}((?:(?!\{\{\s*#(?:if|unless)\b)[\s\S])*?)\{\{\s*\/\1\s*\}\}/;
+
+const isTruthy = (ctx: Record<string, string>, key: string): boolean =>
+  typeof ctx[key] === 'string' && ctx[key].trim().length > 0;
+
+/** Resolve conditional blocks against ctx, then substitute {{ key }} values. */
 export function renderTemplate(body: string, ctx: Record<string, string>): string {
-  return body.replace(EXPR_RE, (_, key: string) => (ctx[key] ?? ''));
+  let out = body;
+  // Resolve conditionals first (bounded loop guards against pathological input).
+  for (let i = 0; i < 1000; i++) {
+    const m = COND_RE.exec(out);
+    if (!m) break;
+    const [full, kind, key, inner] = m;
+    const [whenTrue = '', whenFalse = ''] = inner.split(/\{\{\s*else\s*\}\}/);
+    const cond = kind === 'unless' ? !isTruthy(ctx, key) : isTruthy(ctx, key);
+    out = out.slice(0, m.index) + (cond ? whenTrue : whenFalse) + out.slice(m.index + full.length);
+  }
+  return out.replace(EXPR_RE, (_, key: string) => ctx[key] ?? '');
 }
 
 // ---------------------------------------------------------------------------
