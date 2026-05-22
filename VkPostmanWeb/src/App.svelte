@@ -15,6 +15,25 @@
     localStorage.setItem('vkp.tab', nav.tab);
   });
 
+  // ---- Theme (Catppuccin: Latte = light, Mocha = dark) --------------------
+  // Default to the user's saved choice, else their OS preference.
+  type Theme = 'light' | 'dark';
+  let theme = $state<Theme>(
+    (localStorage.getItem('vkp.theme') as Theme | null) ??
+      (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
+  );
+  $effect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('vkp.theme', theme);
+    // Keep the mobile browser chrome in sync with the top bar colour.
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', theme === 'dark' ? '#181825' : '#7287fd');
+  });
+  function toggleTheme() {
+    theme = theme === 'dark' ? 'light' : 'dark';
+  }
+
   // Settings sheet state
   let showMenu = $state(false);
   let importInput: HTMLInputElement | undefined = $state();
@@ -90,6 +109,9 @@
       >⋯</button>
       {#if showMenu}
         <div class="menu" role="menu">
+          <button class="menu-item" role="menuitem" onclick={toggleTheme}>
+            {theme === 'dark' ? '☀️ Light theme' : '🌙 Dark theme'}
+          </button>
           <button class="menu-item" role="menuitem" onclick={doExport}>
             ⬇️ Export data (JSON)
           </button>
@@ -186,9 +208,9 @@
     right: 0;
     top: calc(100% + 6px);
     min-width: 220px;
-    background: #fff;
-    color: #2c2d30;
-    border: 1px solid #e7e8ec;
+    background: var(--vk-surface);
+    color: var(--vk-text);
+    border: 1px solid var(--vk-border);
     border-radius: 8px;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.14), 0 4px 10px rgba(0, 0, 0, 0.06);
     padding: 4px;
@@ -208,12 +230,12 @@
     cursor: pointer;
     border-radius: 4px;
   }
-  .menu-item:hover { background: #f4f5f7; }
+  .menu-item:hover { background: var(--vk-hover); }
 
   .io-banner {
     padding: 0.55rem 1rem;
     font-size: 0.9rem;
   }
-  .io-banner.ok  { background: #E6F4E6; color: #1e5a1e; }
-  .io-banner.err { background: #FCE4E4; color: #8a2424; }
+  .io-banner.ok  { background: var(--vk-banner-ok-bg); color: var(--vk-banner-ok-fg); }
+  .io-banner.err { background: var(--vk-banner-err-bg); color: var(--vk-banner-err-fg); }
 </style>
