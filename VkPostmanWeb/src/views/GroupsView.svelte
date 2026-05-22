@@ -6,7 +6,9 @@
   import { knownTagsQuery } from '../lib/tags';
   import { undo } from '../lib/undo.svelte';
   import TagSuggestions from './TagSuggestions.svelte';
-  import { Plus, Pin, Trash2 } from '@lucide/svelte';
+  import TemplateSelect from './TemplateSelect.svelte';
+  import { nav } from '../lib/nav.svelte';
+  import { Plus, Pin, Trash2, ExternalLink } from '@lucide/svelte';
 
   // Live IndexedDB queries — re-run automatically when the data changes.
   const groupsQuery = liveQuery(() => db.groups.orderBy('displayName').toArray());
@@ -34,6 +36,17 @@
     const cur = tagsInput.trim();
     tagsInput = cur ? `${cur} ${tag}` : tag;
   }
+
+  // Honour an "open this group" request (e.g. a link from the Templates tab).
+  $effect(() => {
+    const id = nav.requestedGroupId;
+    if (id == null || !groups) return;
+    const g = groups.find((x) => x.id === id);
+    if (g) {
+      nav.requestedGroupId = null;
+      void edit(g);
+    }
+  });
 
   let editing = $state<TargetGroup | null>(null);
   let tagsInput = $state('');
@@ -189,25 +202,24 @@
         </div>
         <div class="stack">
           <label for="g-template">Template</label>
-          <!--
-            Using value + onchange (not bind:value). `bind:value` on a select whose
-            options come from a liveQuery has a race: on first render the options
-            list is empty, the browser forces the selection to the first option
-            ("— none —"), and bind:value writes that back, clobbering the real id.
-          -->
-          <select
-            id="g-template"
-            value={editing.postTemplateId ?? ''}
-            onchange={(e) => {
-              const raw = (e.currentTarget as HTMLSelectElement).value;
-              editing!.postTemplateId = raw === '' ? undefined : Number(raw);
-            }}
-          >
-            <option value="">— none —</option>
-            {#each templates as t (t.id)}
-              <option value={t.id}>{t.name}</option>
-            {/each}
-          </select>
+          <div class="row" style="gap: 0.4rem; align-items: stretch;">
+            <div class="grow">
+              <TemplateSelect
+                id="g-template"
+                value={editing.postTemplateId}
+                templates={templates}
+                onchange={(tid) => (editing!.postTemplateId = tid)}
+              />
+            </div>
+            {#if editing.postTemplateId != null}
+              <button
+                type="button"
+                class="btn btn-outline btn-sm"
+                title="Open this template"
+                onclick={() => nav.openTemplate(editing!.postTemplateId!)}
+              ><ExternalLink size={15} /> Open</button>
+            {/if}
+          </div>
           <span class="muted">A group without a template can't be a draft target.</span>
         </div>
         <div class="stack">

@@ -17,7 +17,7 @@
   import { knownTagsQuery } from '../lib/tags';
   import { undo } from '../lib/undo.svelte';
   import TagSuggestions from './TagSuggestions.svelte';
-  import { Plus, Trash2 } from '@lucide/svelte';
+  import { Plus, Trash2, ExternalLink, Users } from '@lucide/svelte';
   import { tick } from 'svelte';
 
   const templatesQuery = liveQuery(() => db.templates.orderBy('updatedAt').reverse().toArray());
@@ -107,6 +107,11 @@
   let editing = $state<PostTemplate | null>(null);
   let defaultTagsInput = $state('');
   let saveStatus = $state<AutosaveStatus>('idle');
+
+  // Groups assigned to the template currently being edited.
+  const usingGroups = $derived(
+    editing?.id != null ? groupsByTemplateId.get(editing.id) ?? [] : [],
+  );
 
   // Keep the tag-input in sync with the editing payload so autosave fires.
   $effect(() => {
@@ -403,6 +408,28 @@
                   <code>{`{{ ${u.key} }}`}</code>
                   <span>{u.displayName}</span>
                   <span class="muted">{u.type}</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        <div>
+          <h4 style="margin: 1rem 0 0.4rem;">Used by groups</h4>
+          {#if usingGroups.length === 0}
+            <p class="muted">No groups use this template yet. Assign it on the <strong>Groups</strong> tab.</p>
+          {:else}
+            <div class="stack" style="gap: 0.25rem;">
+              {#each usingGroups as g (g.id)}
+                <div class="used-row">
+                  <span><Users size={14} class="inline-ico" /> {g.displayName}</span>
+                  <span class="muted">@{g.screenName}</span>
+                  <button
+                    type="button"
+                    class="btn btn-outline btn-sm"
+                    title="Open this group"
+                    onclick={() => nav.openGroup(g.id!)}
+                  ><ExternalLink size={14} /> Open</button>
                 </div>
               {/each}
             </div>
