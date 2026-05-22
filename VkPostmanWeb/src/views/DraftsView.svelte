@@ -19,6 +19,10 @@
   import { knownTagsQuery } from '../lib/tags';
   import { undo } from '../lib/undo.svelte';
   import TagSuggestions from './TagSuggestions.svelte';
+  import {
+    Plus, Copy, Files, Pin, Trash2, Check, Undo2, ExternalLink,
+    GripVertical, Image, X, ChevronDown, TriangleAlert,
+  } from '@lucide/svelte';
 
   /** Collapsed state for the collapsible blocks (persists across reloads). */
   let groupsCollapsed  = $state(localStorage.getItem('vkp.draftGroupsCollapsed') === '1');
@@ -491,7 +495,7 @@
   <aside class="card">
     <div class="card-header">
       <h3 style="margin: 0;">Drafts</h3>
-      <button class="btn btn-primary btn-sm" onclick={newDraft}>+ New</button>
+      <button class="btn btn-primary btn-sm" onclick={newDraft}><Plus size={15} /> New</button>
     </div>
 
     {#if !drafts}
@@ -532,7 +536,7 @@
               onclick={() => d.id != null && selectDraft(d.id)}
             >
               <strong>
-                {#if d.pinned}<span title="Pinned">📌 </span>{/if}{#if isFullyPosted(d)}<span title="All target groups posted">✓ </span>{/if}{d.title}
+                {#if d.pinned}<Pin size={13} class="inline-ico" />{/if}{#if isFullyPosted(d)}<Check size={14} class="inline-ico done-ico" />{/if}{d.title}
               </strong>
               <span class="meta">{new Date(d.updatedAt).toLocaleString()}</span>
               {#if progressOf(d).total > 0}
@@ -570,7 +574,7 @@
             aria-expanded={!detailsCollapsed}
             onclick={() => (detailsCollapsed = !detailsCollapsed)}
           >
-            <span class="collapse-chevron" class:collapsed={detailsCollapsed}>▾</span>
+            <span class="collapse-chevron" class:collapsed={detailsCollapsed}><ChevronDown size={16} /></span>
             <h3 style="margin: 0; white-space: nowrap;">Draft details</h3>
           </button>
           <div class="row" style="flex-wrap: nowrap;">
@@ -584,26 +588,26 @@
               title={draft.pinned ? 'Unpin' : 'Pin to top'}
               aria-label={draft.pinned ? 'Unpin' : 'Pin to top'}
               onclick={togglePin}
-            >📌</button>
+            ><Pin size={15} /></button>
             <button
               class="btn btn-ghost btn-sm icon-only"
               title="Duplicate"
               aria-label="Duplicate draft"
               onclick={duplicate}
-            >⧉</button>
+            ><Files size={15} /></button>
             <button
               class="btn btn-danger btn-sm icon-only"
               title="Delete"
               aria-label="Delete draft"
               onclick={remove}
-            >🗑</button>
+            ><Trash2 size={15} /></button>
           </div>
         </div>
 
         {#if !ready && validationIssues.length > 0}
           <ul class="issues">
             {#each validationIssues as issue (issue)}
-              <li>⚠ {issue}</li>
+              <li><TriangleAlert size={13} class="inline-ico" /> {issue}</li>
             {/each}
           </ul>
         {/if}
@@ -658,12 +662,12 @@
               <ul class="image-list">
                 {#each draft.imageNotes ?? [] as name (name)}
                   <li>
-                    <span class="img-name">🖼 {name}</span>
+                    <span class="img-name"><Image size={14} class="inline-ico" /> {name}</span>
                     <button
                       class="img-remove"
                       aria-label={`Remove ${name}`}
                       onclick={() => removeImageNote(name)}
-                    >✕</button>
+                    ><X size={14} /></button>
                   </li>
                 {/each}
               </ul>
@@ -690,7 +694,7 @@
           aria-expanded={!groupsCollapsed}
           onclick={() => (groupsCollapsed = !groupsCollapsed)}
         >
-          <span class="collapse-chevron" class:collapsed={groupsCollapsed}>▾</span>
+          <span class="collapse-chevron" class:collapsed={groupsCollapsed}><ChevronDown size={16} /></span>
           <h3 style="margin: 0;">Target groups</h3>
           <span class="muted" style="margin-left: auto;">
             {draft.targetGroupIds.length} of {groups.length} selected
@@ -723,7 +727,7 @@
                           onclick={(e) => { e.preventDefault(); nav.openTemplate(g.postTemplateId!); }}
                         >{templatesById.get(g.postTemplateId!)?.name ?? '(deleted)'}</button>
                       {:else}
-                        <span class="warn">⚠ no template assigned</span>
+                        <span class="warn"><TriangleAlert size={13} class="inline-ico" /> no template assigned</span>
                       {/if}
                     </div>
                   </div>
@@ -798,7 +802,7 @@
         aria-expanded={!toPostCollapsed}
         onclick={() => (toPostCollapsed = !toPostCollapsed)}
       >
-        <span class="collapse-chevron" class:collapsed={toPostCollapsed}>▾</span>
+        <span class="collapse-chevron" class:collapsed={toPostCollapsed}><ChevronDown size={16} /></span>
         <h3 style="margin: 0;">To post</h3>
       </button>
       <div class="row">
@@ -810,7 +814,7 @@
           disabled={activeRenders.length === 0}
           title="Copy the next unposted group's text and open its vk.com page"
           onclick={copyNextAndOpen}
-        >📋 Copy next &amp; open</button>
+        ><Copy size={15} /> Copy next &amp; open</button>
       </div>
     </div>
 
@@ -845,13 +849,13 @@
                   ondragend={() => (dragGroupId = null)}
                   title="Drag to reorder the posting queue"
                   aria-label="Drag to reorder"
-                >⠿</span>
+                ><GripVertical size={15} /></span>
                 {r.group.displayName}
               </strong>
               <div class="row">
-                <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}>📋 Copy</button>
-                <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}>🌐 Open vk.com</button>
-                <button class="btn btn-primary btn-sm" onclick={() => markPosted(r.group.id!)}>✓ Posted</button>
+                <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}><Copy size={15} /> Copy</button>
+                <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}><ExternalLink size={15} /> Open vk.com</button>
+                <button class="btn btn-primary btn-sm" onclick={() => markPosted(r.group.id!)}><Check size={15} /> Posted</button>
               </div>
             </div>
             <div class="rendered">{r.text}</div>
@@ -869,8 +873,8 @@
         aria-expanded={!postedCollapsed}
         onclick={() => (postedCollapsed = !postedCollapsed)}
       >
-        <span class="collapse-chevron" class:collapsed={postedCollapsed}>▾</span>
-        <h3 style="margin: 0;">✓ Posted</h3>
+        <span class="collapse-chevron" class:collapsed={postedCollapsed}><ChevronDown size={16} /></span>
+        <h3 style="margin: 0; display: inline-flex; align-items: center; gap: 0.35rem;"><Check size={17} /> Posted</h3>
         <span class="muted" style="margin-left: auto;">{postedRenders.length}</span>
       </button>
       {#if !postedCollapsed}
@@ -884,9 +888,9 @@
                 {/if}
               </strong>
               <div class="row">
-                <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}>📋 Copy</button>
-                <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}>🌐 Open vk.com</button>
-                <button class="btn btn-ghost btn-sm" onclick={() => unmarkPosted(r.group.id!)}>↩ Unmark</button>
+                <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}><Copy size={15} /> Copy</button>
+                <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}><ExternalLink size={15} /> Open vk.com</button>
+                <button class="btn btn-ghost btn-sm" onclick={() => unmarkPosted(r.group.id!)}><Undo2 size={15} /> Unmark</button>
               </div>
             </div>
             <div class="rendered">{r.text}</div>

@@ -7,6 +7,7 @@
     PostTemplate,
     TargetGroup,
   } from '../lib/types';
+  import { Check } from '@lucide/svelte';
 
   const draftsQuery       = liveQuery(() => db.drafts.toArray());
   const groupsQuery       = liveQuery(() => db.groups.toArray());
@@ -110,7 +111,7 @@
     <!-- Draft status -->
     <div class="card">
       <h3 style="margin: 0 0 0.6rem;">Draft status</h3>
-      <div class="kv"><span>✓ Fully posted</span><strong>{draftStatus.fully}</strong></div>
+      <div class="kv"><span><Check size={14} class="inline-ico done-ico" /> Fully posted</span><strong>{draftStatus.fully}</strong></div>
       <div class="kv"><span>In progress</span><strong>{draftStatus.inProgress}</strong></div>
       <div class="kv"><span>No groups yet</span><strong>{draftStatus.noGroups}</strong></div>
     </div>

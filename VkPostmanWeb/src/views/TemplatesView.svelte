@@ -17,6 +17,7 @@
   import { knownTagsQuery } from '../lib/tags';
   import { undo } from '../lib/undo.svelte';
   import TagSuggestions from './TagSuggestions.svelte';
+  import { Plus, Trash2 } from '@lucide/svelte';
   import { tick } from 'svelte';
 
   const templatesQuery = liveQuery(() => db.templates.orderBy('updatedAt').reverse().toArray());
@@ -274,7 +275,7 @@
   <aside class="card">
     <div class="card-header">
       <h3 style="margin: 0;">Templates</h3>
-      <button class="btn btn-primary btn-sm" onclick={addNew}>+ New</button>
+      <button class="btn btn-primary btn-sm" onclick={addNew}><Plus size={15} /> New</button>
     </div>
     {#if !templates}
       <p class="muted">Loading…</p>
@@ -411,7 +412,7 @@
         {#if editing.id != null}
           <div style="margin-top: 0.5rem;">
             <button class="btn btn-danger btn-sm" onclick={() => remove(editing!)}>
-              🗑 Delete template
+              <Trash2 size={15} /> Delete template
             </button>
           </div>
         {/if}
