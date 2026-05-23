@@ -8,6 +8,7 @@
     type PostTemplate,
   } from '../lib/types';
   import { createAutosave, type AutosaveStatus } from '../lib/autosave';
+  import { t } from '../lib/i18n.svelte';
   import { Plus, Trash2 } from '@lucide/svelte';
 
   const libraryQuery = liveQuery(() => db.placeholders.orderBy('key').toArray());
@@ -28,13 +29,13 @@
   let editing = $state<PlaceholderDefinition | null>(null);
   let saveStatus = $state<AutosaveStatus>('idle');
 
-  const typeOptions: Array<{ v: PlaceholderType; label: string }> = [
-    { v: PlaceholderType.Text, label: 'Text' },
-    { v: PlaceholderType.VkLink, label: 'VK link (@name)' },
-    { v: PlaceholderType.WikiLink, label: 'Wiki link [target|display]' },
-    { v: PlaceholderType.Url, label: 'URL' },
-    { v: PlaceholderType.TagList, label: 'Tag list' },
-  ];
+  const typeOptions = $derived<Array<{ v: PlaceholderType; label: string }>>([
+    { v: PlaceholderType.Text, label: t('Text') },
+    { v: PlaceholderType.VkLink, label: t('VK link (@name)') },
+    { v: PlaceholderType.WikiLink, label: t('Wiki link [target|display]') },
+    { v: PlaceholderType.Url, label: t('URL') },
+    { v: PlaceholderType.TagList, label: t('Tag list') },
+  ]);
 
   const autosave = createAutosave<PlaceholderDefinition>({
     get: () => editing,
@@ -120,9 +121,9 @@
   const statusLabel = $derived.by(() => {
     switch (saveStatus) {
       case 'dirty':  return '…';
-      case 'saving': return 'Saving…';
-      case 'saved':  return '✓ Saved';
-      case 'error':  return '⚠ Save failed';
+      case 'saving': return t('Saving…');
+      case 'saved':  return t('✓ Saved');
+      case 'error':  return t('⚠ Save failed');
       default:       return '';
     }
   });
@@ -133,21 +134,21 @@
 <div class="editor-layout">
   <aside class="card">
     <div class="card-header">
-      <h3 style="margin: 0;">Placeholders</h3>
-      <button class="btn btn-primary btn-sm" onclick={addNew}><Plus size={15} /> New</button>
+      <h3 style="margin: 0;">{t('Placeholders')}</h3>
+      <button class="btn btn-primary btn-sm" onclick={addNew}><Plus size={15} /> {t('New')}</button>
     </div>
     {#if unusedPlaceholders.length > 0}
       <button
         class="btn btn-ghost btn-sm"
         style="width: 100%; margin-bottom: 8px;"
         onclick={removeUnused}
-        title="Delete placeholders not referenced by any template"
-      ><Trash2 size={15} /> Remove unused ({unusedPlaceholders.length})</button>
+        title={t('Remove unused ({n})', { n: unusedPlaceholders.length })}
+      ><Trash2 size={15} /> {t('Remove unused ({n})', { n: unusedPlaceholders.length })}</button>
     {/if}
     {#if !library}
-      <p class="muted">Loading…</p>
+      <p class="muted">{t('Loading…')}</p>
     {:else if library.length === 0}
-      <p class="muted">No placeholders yet. Type <code>{'{{ foo }}'}</code> in a template's Body and one will appear here.</p>
+      <p class="muted">{t('No placeholders yet. Type {code} in a template’s Body and one will appear here.', { code: '{{ foo }}' })}</p>
     {:else}
       <div class="list">
         {#each library as d (d.id)}
@@ -167,30 +168,30 @@
   <section class="card" style="grid-column: span 2;">
     {#if !editing}
       <p class="muted" style="text-align: center; padding: 2rem 0;">
-        Pick a placeholder on the left, or click <em>+ New</em>.
+        {t('Pick a placeholder on the left, or click')} <em>+ {t('New')}</em>.
       </p>
     {:else}
       <div class="card-header">
-        <h3 style="margin: 0;">Edit placeholder</h3>
+        <h3 style="margin: 0;">{t('Edit placeholder')}</h3>
         <div class="row">
           <span class="muted" style="min-width: 5rem; text-align: right;">{statusLabel}</span>
-          <button class="btn btn-ghost btn-sm" onclick={close}>Close</button>
+          <button class="btn btn-ghost btn-sm" onclick={close}>{t('Close')}</button>
         </div>
       </div>
 
       <div class="stack-lg">
         <div class="stack">
-          <label for="p-key">Key (referenced as <code>{'{{ key }}'}</code>)</label>
+          <label for="p-key">{t('Key (referenced as {code})', { code: '{{ key }}' })}</label>
           <input id="p-key" type="text"
                  style="font-family: 'JetBrains Mono', Consolas, monospace;"
                  bind:value={editing.key} />
         </div>
         <div class="stack">
-          <label for="p-display">Display name</label>
+          <label for="p-display">{t('Display name')}</label>
           <input id="p-display" type="text" bind:value={editing.displayName} />
         </div>
         <div class="stack">
-          <label for="p-type">Type</label>
+          <label for="p-type">{t('Type')}</label>
           <!--
             value + onchange instead of bind:value — avoids the well-known
             Svelte select-binding race where an initial render without options
@@ -210,22 +211,22 @@
           </select>
         </div>
         <div class="stack">
-          <label for="p-desc">Description (optional)</label>
+          <label for="p-desc">{t('Description (optional)')}</label>
           <input id="p-desc" type="text" bind:value={editing.description} />
         </div>
         <div class="stack">
-          <label for="p-default">Default value (used when the draft leaves this field empty)</label>
+          <label for="p-default">{t('Default value (used when the draft leaves this field empty)')}</label>
           <input id="p-default" type="text" bind:value={editing.defaultValue} />
         </div>
 
         <div>
-          <h4 style="margin: 1rem 0 0.4rem;">Used by</h4>
+          <h4 style="margin: 1rem 0 0.4rem;">{t('Used by')}</h4>
           {#if currentUsages.length === 0}
-            <p class="muted">(no templates reference this key)</p>
+            <p class="muted">{t('(no templates reference this key)')}</p>
           {:else}
             <ul style="margin: 0; padding-left: 1.25rem;">
-              {#each currentUsages as t (t.id)}
-                <li>{t.name}</li>
+              {#each currentUsages as tpl (tpl.id)}
+                <li>{tpl.name}</li>
               {/each}
             </ul>
           {/if}
@@ -233,7 +234,7 @@
 
         <div>
           <button class="btn btn-danger btn-sm" onclick={() => remove(editing!)}>
-            <Trash2 size={15} /> Delete placeholder
+            <Trash2 size={15} /> {t('Delete placeholder')}
           </button>
         </div>
       </div>

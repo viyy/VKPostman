@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../lib/i18n.svelte';
   // Chip row of previously-used tags. Clicking a chip appends it to the bound
   // input value. Tags already present in `current` are hidden.
   interface Props {
@@ -21,7 +22,7 @@
 
 {#if suggestions.length > 0}
   <div class="placeholder-chiprow">
-    <span class="muted" style="font-size: 0.75rem;">Add:</span>
+    <span class="muted" style="font-size: 0.75rem;">{t('Add:')}</span>
     {#each suggestions as tag (tag)}
       <button type="button" class="chip chip-global" onclick={() => onpick(tag)}>#{tag}</button>
     {/each}

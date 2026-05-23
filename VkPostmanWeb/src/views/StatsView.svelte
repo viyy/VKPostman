@@ -8,6 +8,7 @@
     TargetGroup,
   } from '../lib/types';
   import { nav } from '../lib/nav.svelte';
+  import { t } from '../lib/i18n.svelte';
   import { localDateStr, addDaysStr, formatPlanned } from '../lib/dates';
   import { Check, CalendarClock } from '@lucide/svelte';
 
@@ -62,12 +63,12 @@
   const agendaTotal = $derived(
     agenda.overdue.length + agenda.today.length + agenda.week.length + agenda.later.length,
   );
-  const agendaSections = [
-    { key: 'overdue', label: 'Overdue' },
-    { key: 'today', label: 'Today' },
-    { key: 'week', label: 'This week' },
-    { key: 'later', label: 'Later' },
-  ] as const;
+  const agendaSections = $derived([
+    { key: 'overdue', label: t('Overdue') },
+    { key: 'today', label: t('Today') },
+    { key: 'week', label: t('This week') },
+    { key: 'later', label: t('Later') },
+  ] as const);
 
   const draftStatus = $derived.by(() => {
     let fully = 0, inProgress = 0, noGroups = 0;
@@ -131,11 +132,11 @@
   <!-- Agenda -->
   <div class="card">
     <h3 style="margin: 0 0 0.6rem; display: inline-flex; align-items: center; gap: 0.4rem;">
-      <CalendarClock size={17} /> Agenda
+      <CalendarClock size={17} /> {t('Agenda')}
     </h3>
     {#if agendaTotal === 0}
       <p class="muted" style="margin: 0;">
-        No planned posts. Set “Plan to post on” on a draft to see it here.
+        {t('No planned posts. Set “Plan to post on” on a draft to see it here.')}
       </p>
     {:else}
       {#each agendaSections as sec (sec.key)}
@@ -158,42 +159,41 @@
 
   <!-- Overview tiles -->
   <div class="card">
-    <h3 style="margin: 0 0 0.6rem;">Overview</h3>
+    <h3 style="margin: 0 0 0.6rem;">{t('Overview')}</h3>
     <div class="tiles">
-      <div class="tile"><span class="num">{drafts.length}</span><span class="lbl">Drafts</span></div>
-      <div class="tile"><span class="num">{templates.length}</span><span class="lbl">Templates</span></div>
-      <div class="tile"><span class="num">{groups.length}</span><span class="lbl">Groups</span></div>
-      <div class="tile"><span class="num">{placeholders.length}</span><span class="lbl">Placeholders</span></div>
-      <div class="tile"><span class="num">{totalPosts}</span><span class="lbl">Posts marked</span></div>
+      <div class="tile"><span class="num">{drafts.length}</span><span class="lbl">{t('Drafts')}</span></div>
+      <div class="tile"><span class="num">{templates.length}</span><span class="lbl">{t('Templates')}</span></div>
+      <div class="tile"><span class="num">{groups.length}</span><span class="lbl">{t('Groups')}</span></div>
+      <div class="tile"><span class="num">{placeholders.length}</span><span class="lbl">{t('Placeholders')}</span></div>
+      <div class="tile"><span class="num">{totalPosts}</span><span class="lbl">{t('Posts marked')}</span></div>
     </div>
   </div>
 
   <div class="two-col">
     <!-- Draft status -->
     <div class="card">
-      <h3 style="margin: 0 0 0.6rem;">Draft status</h3>
-      <div class="kv"><span><Check size={14} class="inline-ico done-ico" /> Fully posted</span><strong>{draftStatus.fully}</strong></div>
-      <div class="kv"><span>In progress</span><strong>{draftStatus.inProgress}</strong></div>
-      <div class="kv"><span>No groups yet</span><strong>{draftStatus.noGroups}</strong></div>
+      <h3 style="margin: 0 0 0.6rem;">{t('Draft status')}</h3>
+      <div class="kv"><span><Check size={14} class="inline-ico done-ico" /> {t('Fully posted')}</span><strong>{draftStatus.fully}</strong></div>
+      <div class="kv"><span>{t('In progress')}</span><strong>{draftStatus.inProgress}</strong></div>
+      <div class="kv"><span>{t('No groups yet')}</span><strong>{draftStatus.noGroups}</strong></div>
     </div>
 
     <!-- Activity -->
     <div class="card">
-      <h3 style="margin: 0 0 0.6rem;">Posting activity</h3>
-      <div class="kv"><span>Last 7 days</span><strong>{activity.last7}</strong></div>
-      <div class="kv"><span>Last 30 days</span><strong>{activity.last30}</strong></div>
+      <h3 style="margin: 0 0 0.6rem;">{t('Posting activity')}</h3>
+      <div class="kv"><span>{t('Last 7 days')}</span><strong>{activity.last7}</strong></div>
+      <div class="kv"><span>{t('Last 30 days')}</span><strong>{activity.last30}</strong></div>
       <p class="muted" style="margin: 0.5rem 0 0;">
-        Based on {activity.timestamped} timestamped post{activity.timestamped === 1 ? '' : 's'}.
-        Posts marked before timestamps were added aren't dated.
+        {t('Based on {n} timestamped posts. Posts marked before timestamps were added aren’t dated.', { n: activity.timestamped })}
       </p>
     </div>
   </div>
 
   <!-- Posts per group -->
   <div class="card">
-    <h3 style="margin: 0 0 0.6rem;">Posts per group</h3>
+    <h3 style="margin: 0 0 0.6rem;">{t('Posts per group')}</h3>
     {#if postsPerGroup.length === 0}
-      <p class="muted">No groups yet.</p>
+      <p class="muted">{t('No groups yet')}.</p>
     {:else}
       {#each postsPerGroup as r (r.screen)}
         <div class="bar-row">
@@ -209,9 +209,9 @@
 
   <!-- Template usage -->
   <div class="card">
-    <h3 style="margin: 0 0 0.6rem;">Template usage</h3>
+    <h3 style="margin: 0 0 0.6rem;">{t('Template usage')}</h3>
     {#if templateUsage.length === 0}
-      <p class="muted">No templates yet.</p>
+      <p class="muted">{t('No templates yet.')}</p>
     {:else}
       {#each templateUsage as r (r.name)}
         <div class="bar-row">
@@ -220,7 +220,7 @@
             <div class="bar-fill" style="width: {pct(r.posts, maxTplPosts)};"></div>
           </div>
           <div class="bar-num">
-            {r.posts} <span class="muted">· {r.groups} group{r.groups === 1 ? '' : 's'}</span>
+            {r.posts} <span class="muted">· {t('{n} groups', { n: r.groups })}</span>
           </div>
         </div>
       {/each}

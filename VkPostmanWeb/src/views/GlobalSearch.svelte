@@ -2,6 +2,7 @@
   import { liveQuery } from 'dexie';
   import { db } from '../lib/db';
   import { nav } from '../lib/nav.svelte';
+  import { t } from '../lib/i18n.svelte';
   import type { PostDraft, PostTemplate, TargetGroup } from '../lib/types';
   import { FileText, LayoutTemplate, Users } from '@lucide/svelte';
 
@@ -106,18 +107,18 @@
       bind:this={inputEl}
       class="search-box"
       type="text"
-      placeholder="Search drafts, templates, groups… (or drop an image to find it by name)"
+      placeholder={t('Search drafts, templates, groups… (or drop an image to find it by name)')}
       bind:value={query}
       onkeydown={onInputKey}
       ondragover={(e) => e.preventDefault()}
       ondrop={onDrop}
     />
     {#if droppedFile}
-      <p class="muted hint">Searching by dropped filename. Edit the box to change the query.</p>
+      <p class="muted hint">{t('Searching by dropped filename. Edit the box to change the query.')}</p>
     {/if}
 
     {#if query.trim() && results.length === 0}
-      <p class="muted hint">No matches for “{query}”.</p>
+      <p class="muted hint">{t('No matches for “{q}”.', { q: query })}</p>
     {:else if results.length > 0}
       <ul class="results">
         {#each results as r (r.type + r.id)}
@@ -134,7 +135,7 @@
         {/each}
       </ul>
     {:else}
-      <p class="muted hint">Type to search across everything. Press Esc to close, Enter to open the top hit.</p>
+      <p class="muted hint">{t('Type to search across everything. Press Esc to close, Enter to open the top hit.')}</p>
     {/if}
   </div>
 </div>

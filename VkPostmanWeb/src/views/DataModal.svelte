@@ -11,6 +11,7 @@
     type SubsetSelection,
   } from '../lib/exchange';
   import { gdrive, type DriveBackup } from '../lib/gdrive.svelte';
+  import { t } from '../lib/i18n.svelte';
   import type { PostDraft, PostTemplate, TargetGroup } from '../lib/types';
   import { Upload, Download, Cloud, CloudUpload, CloudDownload, LogOut } from '@lucide/svelte';
 
@@ -173,20 +174,19 @@
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="modal" role="dialog" aria-modal="true" tabindex="-1" aria-label="Data tools" onclick={(e) => e.stopPropagation()}>
     <div class="card-header">
-      <h3 style="margin: 0;">Data tools</h3>
-      <button class="btn btn-ghost btn-sm" onclick={onclose}>Close</button>
+      <h3 style="margin: 0;">{t('Data tools')}</h3>
+      <button class="btn btn-ghost btn-sm" onclick={onclose}>{t('Close')}</button>
     </div>
 
     <!-- ===== Google Drive ===== -->
     <section class="block">
       <h4 style="margin: 0 0 0.3rem; display: inline-flex; align-items: center; gap: 0.4rem;">
-        <Cloud size={16} /> Google Drive backup
+        <Cloud size={16} /> {t('Google Drive backup')}
       </h4>
 
       {#if editingClientId || !gdrive.configured}
         <p class="muted" style="margin: 0 0 0.5rem;">
-          Paste a Google OAuth <strong>Client ID</strong> (Web type). The Client ID is public —
-          safe to store here.
+          {t('Paste a Google OAuth Client ID (Web type). It is public — safe to store here.')}
         </p>
         <div class="row" style="gap: 0.4rem;">
           <input
@@ -195,46 +195,46 @@
             placeholder="xxxxx.apps.googleusercontent.com"
             bind:value={clientIdInput}
           />
-          <button class="btn btn-primary btn-sm" disabled={!clientIdInput.trim()} onclick={saveClientId}>Save</button>
+          <button class="btn btn-primary btn-sm" disabled={!clientIdInput.trim()} onclick={saveClientId}>{t('Save')}</button>
           {#if gdrive.configured}
-            <button class="btn btn-ghost btn-sm" onclick={() => (editingClientId = false)}>Cancel</button>
+            <button class="btn btn-ghost btn-sm" onclick={() => (editingClientId = false)}>{t('Cancel')}</button>
           {/if}
         </div>
       {:else}
         <p class="muted" style="margin: 0 0 0.5rem;">
-          Keeps the last {12} timestamped snapshots in your Drive’s hidden app folder. Last backup:
-          <strong>{fmtTime(gdrive.lastBackupAt)}</strong>.
-          <button type="button" class="link-inline" onclick={() => (editingClientId = true)}>change Client ID</button>
+          {t('Keeps the last 12 timestamped snapshots in your Drive’s hidden app folder.')}
+          {t('Last backup: {date}', { date: fmtTime(gdrive.lastBackupAt) })}
+          <button type="button" class="link-inline" onclick={() => (editingClientId = true)}>{t('change Client ID')}</button>
         </p>
 
         {#if !gdrive.connected}
           <button class="btn btn-outline btn-sm" disabled={gdrive.busy} onclick={driveConnect}>
-            <Cloud size={15} /> Connect Google Drive
+            <Cloud size={15} /> {t('Connect Google Drive')}
           </button>
         {:else}
           <div class="row" style="gap: 0.4rem; flex-wrap: wrap;">
             <button class="btn btn-primary btn-sm" disabled={gdrive.busy} onclick={driveBackup}>
-              <CloudUpload size={15} /> Back up now
+              <CloudUpload size={15} /> {t('Back up now')}
             </button>
             <button class="btn btn-outline btn-sm" disabled={gdrive.busy} onclick={driveShowBackups}>
-              <CloudDownload size={15} /> Restore…
+              <CloudDownload size={15} /> {t('Restore…')}
             </button>
             <button class="btn btn-ghost btn-sm" onclick={() => gdrive.signOut()}>
-              <LogOut size={15} /> Disconnect
+              <LogOut size={15} /> {t('Disconnect')}
             </button>
           </div>
 
           {#if backups != null}
             <div class="backup-list">
               <div class="row" style="justify-content: space-between;">
-                <strong>Choose a snapshot to restore</strong>
-                <button class="btn btn-ghost btn-sm" onclick={() => (backups = null)}>Close</button>
+                <strong>{t('Choose a snapshot to restore')}</strong>
+                <button class="btn btn-ghost btn-sm" onclick={() => (backups = null)}>{t('Close')}</button>
               </div>
               {#each backups as b (b.id)}
                 <div class="backup-row">
                   <span class="grow">{fmtIso(b.modifiedTime)}</span>
                   <span class="muted">{(b.size / 1024).toFixed(0)} KB</span>
-                  <button class="btn btn-outline btn-sm" disabled={gdrive.busy} onclick={() => pickBackup(b)}>Use</button>
+                  <button class="btn btn-outline btn-sm" disabled={gdrive.busy} onclick={() => pickBackup(b)}>{t('Use')}</button>
                 </div>
               {/each}
             </div>
@@ -242,10 +242,10 @@
 
           {#if restoreData != null}
             <div class="restore-prompt">
-              <span>Backup downloaded. Apply it how?</span>
-              <button class="btn btn-danger btn-sm" onclick={() => applyRestore('replace')}>Replace all</button>
-              <button class="btn btn-outline btn-sm" onclick={() => applyRestore('merge')}>Merge / add</button>
-              <button class="btn btn-ghost btn-sm" onclick={() => (restoreData = null)}>Cancel</button>
+              <span>{t('Backup downloaded. Apply it how?')}</span>
+              <button class="btn btn-danger btn-sm" onclick={() => applyRestore('replace')}>{t('Replace all')}</button>
+              <button class="btn btn-outline btn-sm" onclick={() => applyRestore('merge')}>{t('Merge / add')}</button>
+              <button class="btn btn-ghost btn-sm" onclick={() => (restoreData = null)}>{t('Cancel')}</button>
             </div>
           {/if}
         {/if}
@@ -254,13 +254,12 @@
 
     <!-- ===== Merge import ===== -->
     <section class="block">
-      <h4 style="margin: 0 0 0.3rem;">Import &amp; merge</h4>
+      <h4 style="margin: 0 0 0.3rem;">{t('Import & merge')}</h4>
       <p class="muted" style="margin: 0 0 0.5rem;">
-        Add the records from a file <strong>alongside</strong> what you already have
-        (nothing is overwritten). Use the top-bar import button instead to replace everything.
+        {t('Add the records from a file alongside what you already have (nothing is overwritten). Use the top-bar import button instead to replace everything.')}
       </p>
       <button class="btn btn-outline btn-sm" onclick={() => importInput?.click()}>
-        <Upload size={15} /> Choose file to merge…
+        <Upload size={15} /> {t('Choose file to merge…')}
       </button>
       <input
         bind:this={importInput}
@@ -273,17 +272,16 @@
 
     <!-- ===== Subset export ===== -->
     <section class="block">
-      <h4 style="margin: 0 0 0.3rem;">Export a selection</h4>
+      <h4 style="margin: 0 0 0.3rem;">{t('Export a selection')}</h4>
       <p class="muted" style="margin: 0 0 0.5rem;">
-        Pick records to export. Dependencies are included automatically
-        (a draft brings its groups, a group brings its template, etc.).
+        {t('Pick records to export. Dependencies are included automatically (a draft brings its groups, a group brings its template, etc.).')}
       </p>
 
       <div class="pick-cols">
         <div class="pick-col">
-          <div class="field-label">Drafts</div>
+          <div class="field-label">{t('Drafts')}</div>
           {#if drafts.length === 0}
-            <p class="muted">None.</p>
+            <p class="muted">{t('None.')}</p>
           {:else}
             {#each drafts as d (d.id)}
               <label class="pick"><input type="checkbox" checked={selDrf.has(d.id!)} onchange={() => (selDrf = toggle(selDrf, d.id!))} /> <span>{d.title}</span></label>
@@ -291,9 +289,9 @@
           {/if}
         </div>
         <div class="pick-col">
-          <div class="field-label">Groups</div>
+          <div class="field-label">{t('Groups')}</div>
           {#if groups.length === 0}
-            <p class="muted">None.</p>
+            <p class="muted">{t('None.')}</p>
           {:else}
             {#each groups as g (g.id)}
               <label class="pick"><input type="checkbox" checked={selGrp.has(g.id!)} onchange={() => (selGrp = toggle(selGrp, g.id!))} /> <span>{g.displayName}</span></label>
@@ -301,12 +299,12 @@
           {/if}
         </div>
         <div class="pick-col">
-          <div class="field-label">Templates</div>
+          <div class="field-label">{t('Templates')}</div>
           {#if templates.length === 0}
-            <p class="muted">None.</p>
+            <p class="muted">{t('None.')}</p>
           {:else}
-            {#each templates as t (t.id)}
-              <label class="pick"><input type="checkbox" checked={selTpl.has(t.id!)} onchange={() => (selTpl = toggle(selTpl, t.id!))} /> <span>{t.name}</span></label>
+            {#each templates as tpl (tpl.id)}
+              <label class="pick"><input type="checkbox" checked={selTpl.has(tpl.id!)} onchange={() => (selTpl = toggle(selTpl, tpl.id!))} /> <span>{tpl.name}</span></label>
             {/each}
           {/if}
         </div>
@@ -314,7 +312,7 @@
 
       <div class="row" style="margin-top: 0.6rem; justify-content: flex-end;">
         <button class="btn btn-primary btn-sm" disabled={selectedCount === 0} onclick={doExportSubset}>
-          <Download size={15} /> Export {selectedCount} selected
+          <Download size={15} /> {t('Export {n} selected', { n: selectedCount })}
         </button>
       </div>
     </section>
