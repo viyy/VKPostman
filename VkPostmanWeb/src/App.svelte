@@ -222,7 +222,7 @@
   <div class="topbar">
     <span class="brand"><Send size={18} /> VK Postman</span>
     <span class="muted" style="color: rgba(255,255,255,0.75); font-size: 0.78rem;">
-      v{__APP_VERSION__} · {t('offline · local-only')}
+      v{__APP_VERSION__}
     </span>
     <div style="flex: 1;"></div>
     <button

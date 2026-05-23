@@ -294,7 +294,7 @@
 <div class="editor-layout">
   <aside class="card">
     <div class="card-header">
-      <h3 style="margin: 0;">Templates</h3>
+      <h3 style="margin: 0;">{t('Templates')}</h3>
       <button class="btn btn-primary btn-sm" onclick={addNew}><Plus size={15} /> New</button>
     </div>
     {#if !templates}

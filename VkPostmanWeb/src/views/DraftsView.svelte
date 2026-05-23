@@ -564,7 +564,7 @@
   <!-- ==== Draft list ==== -->
   <aside class="card">
     <div class="card-header">
-      <h3 style="margin: 0;">Drafts</h3>
+      <h3 style="margin: 0;">{t('Drafts')}</h3>
       <div class="row">
         {#if drafts && drafts.length > 0}
           <button class="btn btn-ghost btn-sm" onclick={toggleBulkMode}>
@@ -913,7 +913,7 @@
 
   <!-- ==== Per-group output ==== -->
   <section>
-    <div class="card-header" style="padding-left: 4px;">
+    <div class="card-header" style="padding-left: 4px; flex-wrap: wrap;">
       <button
         type="button"
         class="collapse-header"
@@ -922,7 +922,7 @@
         onclick={() => (toPostCollapsed = !toPostCollapsed)}
       >
         <span class="collapse-chevron" class:collapsed={toPostCollapsed}><ChevronDown size={16} /></span>
-        <h3 style="margin: 0;">{t('To post')}</h3>
+        <h3 style="margin: 0; white-space: nowrap;">{t('To post')}</h3>
       </button>
       <div class="row">
         {#if postedRenders.length > 0}
