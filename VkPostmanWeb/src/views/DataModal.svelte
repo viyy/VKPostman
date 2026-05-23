@@ -204,7 +204,6 @@
         <p class="muted" style="margin: 0 0 0.5rem;">
           {t('Keeps the last 12 timestamped snapshots in your Drive’s hidden app folder.')}
           {t('Last backup: {date}', { date: fmtTime(gdrive.lastBackupAt) })}
-          <button type="button" class="link-inline" onclick={() => (editingClientId = true)}>{t('change Client ID')}</button>
         </p>
 
         {#if !gdrive.connected}
