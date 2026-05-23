@@ -8,6 +8,7 @@
   import TagSuggestions from './TagSuggestions.svelte';
   import SearchSelect from './SearchSelect.svelte';
   import { nav } from '../lib/nav.svelte';
+  import { t } from '../lib/i18n.svelte';
   import { exportSubset, downloadExport } from '../lib/exchange';
   import { Plus, Pin, Trash2, ExternalLink, Download, Square, CheckSquare } from '@lucide/svelte';
 
@@ -183,9 +184,9 @@
   const statusLabel = $derived.by(() => {
     switch (saveStatus) {
       case 'dirty':  return '…';
-      case 'saving': return 'Saving…';
-      case 'saved':  return '✓ Saved';
-      case 'error':  return '⚠ Save failed';
+      case 'saving': return t('Saving…');
+      case 'saved':  return t('✓ Saved');
+      case 'error':  return t('⚠ Save failed');
       default:       return '';
     }
   });
@@ -194,39 +195,39 @@
 <div class="editor-layout">
   <aside class="card">
     <div class="card-header">
-      <h3 style="margin: 0;">Groups</h3>
+      <h3 style="margin: 0;">{t('Groups')}</h3>
       <div class="row">
         {#if groups && groups.length > 0}
           <button class="btn btn-ghost btn-sm" onclick={toggleBulkMode}>
-            {bulkMode ? 'Done' : 'Select'}
+            {bulkMode ? t('Done') : t('Select')}
           </button>
         {/if}
-        <button class="btn btn-primary btn-sm" onclick={addNew}><Plus size={15} /> Add</button>
+        <button class="btn btn-primary btn-sm" onclick={addNew}><Plus size={15} /> {t('Add')}</button>
       </div>
     </div>
 
     {#if bulkMode && bulkSel.size > 0}
       <div class="bulk-bar">
-        <span>{bulkSel.size} selected</span>
-        <button class="btn btn-outline btn-sm" onclick={bulkExport}><Download size={14} /> Export</button>
-        <button class="btn btn-danger btn-sm" onclick={bulkDelete}><Trash2 size={14} /> Delete</button>
+        <span>{t('{n} selected', { n: bulkSel.size })}</span>
+        <button class="btn btn-outline btn-sm" onclick={bulkExport}><Download size={14} /> {t('Export')}</button>
+        <button class="btn btn-danger btn-sm" onclick={bulkDelete}><Trash2 size={14} /> {t('Delete')}</button>
       </div>
     {/if}
 
     {#if !groups}
-      <p class="muted">Loading…</p>
+      <p class="muted">{t('Loading…')}</p>
     {:else if groups.length === 0}
-      <p class="muted">No groups yet. Click <em>+ Add</em> to create one.</p>
+      <p class="muted">{t('No groups yet. Click')} <em>+ {t('Add')}</em> {t('to create one.')}</p>
     {:else}
       <input
         type="text"
         class="search-input"
-        placeholder="Search name, alias, template…"
+        placeholder={t('Search name, alias, template…')}
         bind:value={search}
         aria-label="Search groups"
       />
       {#if filteredGroups.length === 0}
-        <p class="muted">No groups match “{search}”.</p>
+        <p class="muted">{t('No matches for “{q}”.', { q: search })}</p>
       {:else}
         <div class="list">
           {#each filteredGroups as g (g.id)}
@@ -237,7 +238,7 @@
             >
               <strong>{#if bulkMode}{#if bulkSel.has(g.id!)}<CheckSquare size={14} class="inline-ico" />{:else}<Square size={14} class="inline-ico" />{/if}{/if}{#if g.pinned}<Pin size={13} class="inline-ico" />{/if}{g.displayName}</strong>
               <span class="meta">
-                @{g.screenName} · template: <em>{templateName(g.postTemplateId)}</em>
+                @{g.screenName} · {t('template:')} <em>{templateName(g.postTemplateId)}</em>
               </span>
               {#if (g.markers ?? []).length > 0}
                 <span class="marker-row">
@@ -254,24 +255,24 @@
   <section class="card" style="grid-column: span 2;">
     {#if !editing}
       <p class="muted" style="text-align: center; padding: 2rem 0;">
-        Pick a group on the left, or click <em>+ Add</em>.
+        {t('Pick a group on the left, or click')} <em>+ {t('Add')}</em>.
       </p>
     {:else}
       <div class="card-header">
-        <h3 style="margin: 0;">Edit group</h3>
+        <h3 style="margin: 0;">{t('Edit group')}</h3>
         <div class="row">
           <span class="muted" style="min-width: 5rem; text-align: right;">{statusLabel}</span>
-          <button class="btn btn-ghost btn-sm" onclick={close}>Close</button>
+          <button class="btn btn-ghost btn-sm" onclick={close}>{t('Close')}</button>
         </div>
       </div>
 
       <div class="stack-lg">
         <div class="stack">
-          <label for="g-display">Display name</label>
+          <label for="g-display">{t('Display name')}</label>
           <input id="g-display" type="text" bind:value={editing.displayName} />
         </div>
         <div class="stack">
-          <label for="g-screen">Screen name</label>
+          <label for="g-screen">{t('Screen name')}</label>
           <input
             id="g-screen"
             type="text"
@@ -280,14 +281,14 @@
           />
         </div>
         <div class="stack">
-          <label for="g-template">Template</label>
+          <label for="g-template">{t('Template')}</label>
           <div class="row" style="gap: 0.4rem; align-items: stretch;">
             <div class="grow">
               <SearchSelect
                 id="g-template"
                 value={editing.postTemplateId}
-                items={templates.map((t) => ({ id: t.id, label: t.name }))}
-                searchPlaceholder="Search templates…"
+                items={templates.map((tpl) => ({ id: tpl.id, label: tpl.name }))}
+                searchPlaceholder={t('Search templates…')}
                 onchange={(tid) => (editing!.postTemplateId = tid)}
               />
             </div>
@@ -295,28 +296,28 @@
               <button
                 type="button"
                 class="btn btn-outline btn-sm"
-                title="Open this template"
+                title={t('Open this template')}
                 onclick={() => nav.openTemplate(editing!.postTemplateId!)}
-              ><ExternalLink size={15} /> Open</button>
+              ><ExternalLink size={15} /> {t('Open')}</button>
             {/if}
           </div>
-          <span class="muted">A group without a template can't be a draft target.</span>
+          <span class="muted">{t('A group without a template can\'t be a draft target.')}</span>
         </div>
         <div class="stack">
-          <label for="g-tags">Mandatory tags (space-separated)</label>
+          <label for="g-tags">{t('Mandatory tags (space-separated)')}</label>
           <input id="g-tags" type="text" bind:value={tagsInput} />
           <TagSuggestions tags={knownTags} current={tagsInput} onpick={addTag} />
-          <span class="muted">Appended to posts via <code>{'{{ group_tags }}'}</code>.</span>
+          <span class="muted">{t('Appended to posts via {code}.', { code: '{{ group_tags }}' })}</span>
         </div>
         <div class="stack">
-          <label for="g-markers">Markers (labels for organising/filtering)</label>
+          <label for="g-markers">{t('Markers (labels for organising/filtering)')}</label>
           <input id="g-markers" type="text" placeholder="cosplay street portrait…" bind:value={markersInput} />
           <TagSuggestions tags={knownMarkers} current={markersInput} onpick={addMarker} />
-          <span class="muted">Not posted — used to filter groups (e.g. on the Drafts page).</span>
+          <span class="muted">{t('Not posted — used to filter groups (e.g. on the Drafts page).')}</span>
         </div>
         <label class="row" style="gap: 0.5rem; font-weight: 500;">
           <input type="checkbox" bind:checked={editing.isActive} />
-          <span>Active</span>
+          <span>{t('Active')}</span>
         </label>
         <label class="row" style="gap: 0.5rem; font-weight: 500;">
           <input
@@ -324,17 +325,17 @@
             checked={editing.pinned ?? false}
             onchange={(e) => (editing!.pinned = (e.currentTarget as HTMLInputElement).checked)}
           />
-          <span style="display: inline-flex; align-items: center; gap: 0.3rem;"><Pin size={15} /> Pin to top</span>
+          <span style="display: inline-flex; align-items: center; gap: 0.3rem;"><Pin size={15} /> {t('Pin to top')}</span>
         </label>
         <div class="stack">
-          <label for="g-notes">Notes</label>
+          <label for="g-notes">{t('Notes')}</label>
           <textarea id="g-notes" bind:value={editing.notes}></textarea>
         </div>
 
         {#if editing.id != null}
           <div>
             <button class="btn btn-danger btn-sm" onclick={() => removeGroup(editing!)}>
-              <Trash2 size={15} /> Delete group
+              <Trash2 size={15} /> {t('Delete group')}
             </button>
           </div>
         {/if}

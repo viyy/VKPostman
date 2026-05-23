@@ -21,6 +21,7 @@
   import { createAutosave, type AutosaveStatus } from '../lib/autosave';
   import { knownTagsQuery } from '../lib/tags';
   import { undo } from '../lib/undo.svelte';
+  import { t } from '../lib/i18n.svelte';
   import TagSuggestions from './TagSuggestions.svelte';
   import {
     Plus, Copy, Files, Pin, Trash2, Check, Undo2, ExternalLink,
@@ -222,9 +223,9 @@
   const statusLabel = $derived.by(() => {
     switch (saveStatus) {
       case 'dirty':  return '…';
-      case 'saving': return 'Saving…';
-      case 'saved':  return '✓ Saved';
-      case 'error':  return '⚠ Save failed';
+      case 'saving': return t('Saving…');
+      case 'saved':  return t('✓ Saved');
+      case 'error':  return t('⚠ Save failed');
       default:       return '';
     }
   });
@@ -267,9 +268,9 @@
   const validationIssues = $derived.by(() => {
     if (!draft) return [] as string[];
     const issues: string[] = [];
-    if (selectedGroups.length === 0) issues.push('No target groups selected.');
+    if (selectedGroups.length === 0) issues.push(t('No target groups selected.'));
     for (const g of selectedGroups) {
-      if (g.postTemplateId == null) issues.push(`${g.displayName}: no template assigned.`);
+      if (g.postTemplateId == null) issues.push(`${g.displayName}: ${t('no template assigned')}`);
     }
     for (const u of placeholders) {
       const def = u.definition;
@@ -280,7 +281,7 @@
           : raw.trim().length > 0;
       const hasDefault = !!(def?.defaultValue && def.defaultValue.trim());
       if (!filled && !hasDefault) {
-        issues.push(`Missing value: ${def?.displayName ?? u.key} (${u.usedByGroups.join(', ')})`);
+        issues.push(t('Missing value: {name} ({groups})', { name: def?.displayName ?? u.key, groups: u.usedByGroups.join(', ') }));
       }
     }
     return issues;
@@ -567,30 +568,30 @@
       <div class="row">
         {#if drafts && drafts.length > 0}
           <button class="btn btn-ghost btn-sm" onclick={toggleBulkMode}>
-            {bulkMode ? 'Done' : 'Select'}
+            {bulkMode ? t('Done') : t('Select')}
           </button>
         {/if}
-        <button class="btn btn-primary btn-sm" onclick={newDraft}><Plus size={15} /> New</button>
+        <button class="btn btn-primary btn-sm" onclick={newDraft}><Plus size={15} /> {t('New')}</button>
       </div>
     </div>
 
     {#if bulkMode && bulkSel.size > 0}
       <div class="bulk-bar">
-        <span>{bulkSel.size} selected</span>
-        <button class="btn btn-outline btn-sm" onclick={bulkExport}><Download size={14} /> Export</button>
-        <button class="btn btn-danger btn-sm" onclick={bulkDelete}><Trash2 size={14} /> Delete</button>
+        <span>{t('{n} selected', { n: bulkSel.size })}</span>
+        <button class="btn btn-outline btn-sm" onclick={bulkExport}><Download size={14} /> {t('Export')}</button>
+        <button class="btn btn-danger btn-sm" onclick={bulkDelete}><Trash2 size={14} /> {t('Delete')}</button>
       </div>
     {/if}
 
     {#if !drafts}
-      <p class="muted">Loading…</p>
+      <p class="muted">{t('Loading…')}</p>
     {:else if drafts.length === 0}
-      <p class="muted">No drafts yet.</p>
+      <p class="muted">{t('No drafts yet.')}</p>
     {:else}
       <input
         type="text"
         class="search-input"
-        placeholder="Search title, text, group…"
+        placeholder={t('Search title, text, group…')}
         bind:value={search}
         aria-label="Search drafts"
       />
@@ -598,19 +599,19 @@
         <button
           class="seg-btn" class:active={statusFilter === 'all'}
           onclick={() => (statusFilter = 'all')}
-        >All</button>
+        >{t('All')}</button>
         <button
           class="seg-btn" class:active={statusFilter === 'active'}
           onclick={() => (statusFilter = 'active')}
-        >Active</button>
+        >{t('Pending')}</button>
         <button
           class="seg-btn" class:active={statusFilter === 'posted'}
           onclick={() => (statusFilter = 'posted')}
-        >Posted</button>
+        >{t('Posted')}</button>
       </div>
 
       {#if filteredDrafts.length === 0}
-        <p class="muted">No drafts match the current filter.</p>
+        <p class="muted">{t('No drafts match the current filter.')}</p>
       {:else}
         <div class="list">
           {#each filteredDrafts as d (d.id)}
@@ -645,7 +646,7 @@
     {#if !draft}
       <div class="card">
         <p class="muted" style="text-align: center; padding: 2rem 0;">
-          Pick a draft on the left, or click <em>+ New</em>.
+          {t('Pick a draft on the left, or click')} <em>+ {t('New')}</em>.
         </p>
       </div>
     {:else}
@@ -659,30 +660,30 @@
             onclick={() => (detailsCollapsed = !detailsCollapsed)}
           >
             <span class="collapse-chevron" class:collapsed={detailsCollapsed}><ChevronDown size={16} /></span>
-            <h3 style="margin: 0; white-space: nowrap;">Draft details</h3>
+            <h3 style="margin: 0; white-space: nowrap;">{t('Draft details')}</h3>
           </button>
           <div class="row" style="flex-wrap: nowrap;">
             <span class="pill" style={ready ? '' : 'background:var(--vk-hover); color:var(--vk-text-secondary);'}>
-              {ready ? 'ready' : 'incomplete'}
+              {ready ? t('ready') : t('incomplete')}
             </span>
             <span class="muted" style="text-align: right;">{statusLabel}</span>
             <button
               class="btn btn-ghost btn-sm icon-only"
               class:pinned={draft.pinned}
-              title={draft.pinned ? 'Unpin' : 'Pin to top'}
-              aria-label={draft.pinned ? 'Unpin' : 'Pin to top'}
+              title={draft.pinned ? t('Unpin') : t('Pin to top')}
+              aria-label={draft.pinned ? t('Unpin') : t('Pin to top')}
               onclick={togglePin}
             ><Pin size={15} /></button>
             <button
               class="btn btn-ghost btn-sm icon-only"
-              title="Duplicate"
-              aria-label="Duplicate draft"
+              title={t('Duplicate')}
+              aria-label={t('Duplicate')}
               onclick={duplicate}
             ><Files size={15} /></button>
             <button
               class="btn btn-danger btn-sm icon-only"
-              title="Delete"
-              aria-label="Delete draft"
+              title={t('Delete')}
+              aria-label={t('Delete')}
               onclick={remove}
             ><Trash2 size={15} /></button>
           </div>
@@ -699,11 +700,11 @@
         {#if !detailsCollapsed}
         <div class="stack-lg">
           <div class="stack">
-            <label for="d-title">Title</label>
+            <label for="d-title">{t('Title')}</label>
             <input id="d-title" type="text" bind:value={draft.title} />
           </div>
           <div class="stack">
-            <label for="d-common">Common text</label>
+            <label for="d-common">{t('Common text')}</label>
             <textarea
               id="d-common"
               bind:value={draft.commonText}
@@ -711,15 +712,15 @@
             ></textarea>
           </div>
           <div class="stack">
-            <label for="d-tags">Theme tags (common to all groups)</label>
+            <label for="d-tags">{t('Theme tags (common to all groups)')}</label>
             <input id="d-tags" type="text" bind:value={themeTagsInput} />
             <TagSuggestions tags={knownTags} current={themeTagsInput} onpick={addTag} />
           </div>
 
           <div class="stack">
             <div class="field-label">
-              Images to attach
-              <span class="muted">&nbsp;(filenames/paths — a manual checklist, files aren't stored)</span>
+              {t('Images to attach')}
+              <span class="muted">&nbsp;{t('(filenames/paths — a manual checklist, files aren’t stored)')}</span>
             </div>
             <div
               class="dropzone"
@@ -730,17 +731,17 @@
               ondragleave={() => (dragOver = false)}
               ondrop={onImageDrop}
             >
-              Drop image files here to add their names
+              {t('Drop image files here to add their names')}
             </div>
             <div class="row" style="gap: 0.4rem;">
               <input
                 type="text"
                 class="grow"
-                placeholder="…or type a filename/path and press Enter"
+                placeholder={t('…or type a filename/path and press Enter')}
                 bind:value={imageNoteInput}
                 onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addImageNoteFromInput(); } }}
               />
-              <button class="btn btn-outline btn-sm" onclick={addImageNoteFromInput}>+ Add</button>
+              <button class="btn btn-outline btn-sm" onclick={addImageNoteFromInput}>+ {t('Add')}</button>
             </div>
             {#if (draft.imageNotes ?? []).length > 0}
               <ul class="image-list">
@@ -759,20 +760,20 @@
           </div>
 
           <div class="stack">
-            <label for="d-notes">Scratch notes <span class="muted">(private, not posted)</span></label>
+            <label for="d-notes">{t('Scratch notes')} <span class="muted">{t('(private, not posted)')}</span></label>
             <textarea
               id="d-notes"
               bind:value={draft.notes}
-              placeholder="Reminders, ideas, to-dos for this post…"
+              placeholder={t('Reminders, ideas, to-dos for this post…')}
             ></textarea>
           </div>
 
           <div class="stack">
-            <label for="d-plan">Plan to post on <span class="muted">(optional)</span></label>
+            <label for="d-plan">{t('Plan to post on')} <span class="muted">{t('(optional)')}</span></label>
             <div class="row" style="gap: 0.4rem;">
               <input id="d-plan" type="date" style="width: auto;" bind:value={draft.plannedFor} />
               {#if draft.plannedFor}
-                <button class="btn btn-ghost btn-sm" onclick={() => (draft!.plannedFor = '')}>Clear</button>
+                <button class="btn btn-ghost btn-sm" onclick={() => (draft!.plannedFor = '')}>{t('Clear')}</button>
               {/if}
             </div>
           </div>
@@ -789,20 +790,20 @@
           onclick={() => (groupsCollapsed = !groupsCollapsed)}
         >
           <span class="collapse-chevron" class:collapsed={groupsCollapsed}><ChevronDown size={16} /></span>
-          <h3 style="margin: 0;">Target groups</h3>
+          <h3 style="margin: 0;">{t('Target groups')}</h3>
           <span class="muted" style="margin-left: auto;">
-            {draft.targetGroupIds.length} of {groups.length} selected
+            {draft.targetGroupIds.length} / {groups.length}
           </span>
         </button>
         {#if !groupsCollapsed}
           {#if groups.length === 0}
             <p class="muted">
-              No groups yet — add some on the <strong>Groups</strong> tab.
+              {t('No groups yet — add some on the')} <strong>{t('Groups')}</strong> {t('tab.')}
             </p>
           {:else}
             {#if availableMarkers.length > 0}
               <div class="marker-filter">
-                <span class="muted" style="font-size: 0.75rem;">Filter by marker:</span>
+                <span class="muted" style="font-size: 0.75rem;">{t('Filter by marker:')}</span>
                 {#each availableMarkers as m (m)}
                   <button
                     type="button"
@@ -812,7 +813,7 @@
                   >{m}</button>
                 {/each}
                 {#if groupMarkerFilter.size > 0}
-                  <button type="button" class="link-btn" onclick={() => (groupMarkerFilter = new Set())}>clear</button>
+                  <button type="button" class="link-btn" onclick={() => (groupMarkerFilter = new Set())}>{t('Clear')}</button>
                 {/if}
               </div>
             {/if}
@@ -830,14 +831,14 @@
                     <strong>{g.displayName}</strong>
                     <div class="muted">
                       @{g.screenName} · {#if hasTpl}
-                        template:
+                        {t('template:')}
                         <button
                           type="button"
                           class="link-btn"
                           onclick={(e) => { e.preventDefault(); nav.openTemplate(g.postTemplateId!); }}
                         >{templatesById.get(g.postTemplateId!)?.name ?? '(deleted)'}</button>
                       {:else}
-                        <span class="warn"><TriangleAlert size={13} class="inline-ico" /> no template assigned</span>
+                        <span class="warn"><TriangleAlert size={13} class="inline-ico" /> {t('no template assigned')}</span>
                       {/if}
                     </div>
                     {#if (g.markers ?? []).length > 0}
@@ -849,7 +850,7 @@
                 </label>
               {/each}
               {#if pickGroups.length === 0}
-                <p class="muted">No groups match the selected markers.</p>
+                <p class="muted">{t('No groups match the selected markers.')}</p>
               {/if}
             </div>
           {/if}
@@ -860,8 +861,8 @@
       {#if placeholders.length > 0}
         <div class="card">
           <div class="card-header">
-            <h3 style="margin: 0;">Placeholders</h3>
-            <span class="muted">union across selected groups' templates</span>
+            <h3 style="margin: 0;">{t('Placeholders')}</h3>
+            <span class="muted">{t('union across selected groups\' templates')}</span>
           </div>
           <div class="stack-lg">
             {#each placeholders as u (u.key)}
@@ -901,7 +902,7 @@
                   />
                 {/if}
 
-                <span class="muted">used by: {u.usedByGroups.join(', ')}</span>
+                <span class="muted">{t('used by: {names}', { names: u.usedByGroups.join(', ') })}</span>
               </div>
             {/each}
           </div>
@@ -921,44 +922,44 @@
         onclick={() => (toPostCollapsed = !toPostCollapsed)}
       >
         <span class="collapse-chevron" class:collapsed={toPostCollapsed}><ChevronDown size={16} /></span>
-        <h3 style="margin: 0;">To post</h3>
+        <h3 style="margin: 0;">{t('To post')}</h3>
       </button>
       <div class="row">
         {#if postedRenders.length > 0}
-          <span class="muted">{postedRenders.length} posted</span>
+          <span class="muted">{t('{n} posted', { n: postedRenders.length })}</span>
         {/if}
         <button
           class="btn btn-ghost btn-sm"
-          title={vkPreview ? 'Show raw copyable text' : 'Show VK-style preview (links)'}
+          title={vkPreview ? t('Show raw copyable text') : t('Show VK-style preview (links)')}
           aria-pressed={vkPreview}
           onclick={() => (vkPreview = !vkPreview)}
-        >{#if vkPreview}<EyeOff size={15} /> Raw{:else}<Eye size={15} /> Preview{/if}</button>
+        >{#if vkPreview}<EyeOff size={15} /> {t('Raw')}{:else}<Eye size={15} /> {t('Preview')}{/if}</button>
         <button
           class="btn btn-outline btn-sm"
           disabled={activeRenders.length === 0}
-          title="Open every unposted group's vk.com page (your browser may block multiple pop-ups)"
+          title={t('Open all')}
           onclick={openAllUnposted}
-        ><ExternalLink size={15} /> Open all</button>
+        ><ExternalLink size={15} /> {t('Open all')}</button>
         <button
           class="btn btn-primary btn-sm"
           disabled={activeRenders.length === 0}
-          title="Copy the next unposted group's text and open its vk.com page"
+          title={t('Copy next & open')}
           onclick={copyNextAndOpen}
-        ><Copy size={15} /> Copy next &amp; open</button>
+        ><Copy size={15} /> {t('Copy next & open')}</button>
       </div>
     </div>
 
     {#if postedSummary && postedSummary.total > 0}
       <p class="muted" style="margin: -0.2rem 0 0.6rem; padding-left: 4px;">
-        Posted to {postedSummary.posted}/{postedSummary.total} groups{#if postedSummary.last} · last on {postedSummary.last.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}{/if}
+        {t('Posted to {a}/{b} groups', { a: postedSummary.posted, b: postedSummary.total })}{#if postedSummary.last} · {t('last on {date}', { date: postedSummary.last.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) })}{/if}
       </p>
     {/if}
 
     {#if !toPostCollapsed}
       {#if renders.length === 0}
-        <p class="muted">Pick one or more target groups on the left to see rendered posts.</p>
+        <p class="muted">{t('Pick one or more target groups on the left to see rendered posts.')}</p>
       {:else if activeRenders.length === 0}
-        <p class="muted">All selected groups are marked posted. 🎉</p>
+        <p class="muted">{t('All selected groups are marked posted. 🎉')}</p>
       {:else}
         {#each activeRenders as r (r.group.id)}
           <div
@@ -977,15 +978,15 @@
                   tabindex="-1"
                   ondragstart={() => (dragGroupId = r.group.id!)}
                   ondragend={() => (dragGroupId = null)}
-                  title="Drag to reorder the posting queue"
-                  aria-label="Drag to reorder"
+                  title={t('Drag to reorder')}
+                  aria-label={t('Drag to reorder')}
                 ><GripVertical size={15} /></span>
                 {r.group.displayName}
               </strong>
               <div class="row">
-                <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}><Copy size={15} /> Copy</button>
-                <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}><ExternalLink size={15} /> Open vk.com</button>
-                <button class="btn btn-primary btn-sm" onclick={() => markPosted(r.group.id!)}><Check size={15} /> Posted</button>
+                <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}><Copy size={15} /> {t('Copy')}</button>
+                <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}><ExternalLink size={15} /> {t('Open vk.com')}</button>
+                <button class="btn btn-primary btn-sm" onclick={() => markPosted(r.group.id!)}><Check size={15} /> {t('Posted')}</button>
               </div>
             </div>
             {#if vkPreview}
@@ -994,8 +995,8 @@
               <div class="rendered">{r.text}</div>
             {/if}
             <div class="char-count" class:over={r.text.length > VK_POST_CHAR_LIMIT}>
-              {r.text.length.toLocaleString()} chars{#if r.text.length > VK_POST_CHAR_LIMIT}
-                · <TriangleAlert size={12} class="inline-ico" /> exceeds ~{VK_POST_CHAR_LIMIT.toLocaleString()}{/if}
+              {t('{n} chars', { n: r.text.length.toLocaleString() })}{#if r.text.length > VK_POST_CHAR_LIMIT}
+                · <TriangleAlert size={12} class="inline-ico" /> {t('exceeds ~{n}', { n: VK_POST_CHAR_LIMIT.toLocaleString() })}{/if}
             </div>
           </div>
         {/each}
@@ -1012,7 +1013,7 @@
         onclick={() => (postedCollapsed = !postedCollapsed)}
       >
         <span class="collapse-chevron" class:collapsed={postedCollapsed}><ChevronDown size={16} /></span>
-        <h3 style="margin: 0; display: inline-flex; align-items: center; gap: 0.35rem;"><Check size={17} /> Posted</h3>
+        <h3 style="margin: 0; display: inline-flex; align-items: center; gap: 0.35rem;"><Check size={17} /> {t('Posted')}</h3>
         <span class="muted" style="margin-left: auto;">{postedRenders.length}</span>
       </button>
       {#if !postedCollapsed}
@@ -1022,13 +1023,13 @@
               <strong>
                 {r.group.displayName}
                 {#if postedDateLabel(r.group.id!)}
-                  <span class="muted" style="font-weight: 400;">· posted {postedDateLabel(r.group.id!)}</span>
+                  <span class="muted" style="font-weight: 400;">· {t('posted {date}', { date: postedDateLabel(r.group.id!) })}</span>
                 {/if}
               </strong>
               <div class="row">
-                <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}><Copy size={15} /> Copy</button>
-                <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}><ExternalLink size={15} /> Open vk.com</button>
-                <button class="btn btn-ghost btn-sm" onclick={() => unmarkPosted(r.group.id!)}><Undo2 size={15} /> Unmark</button>
+                <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}><Copy size={15} /> {t('Copy')}</button>
+                <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}><ExternalLink size={15} /> {t('Open vk.com')}</button>
+                <button class="btn btn-ghost btn-sm" onclick={() => unmarkPosted(r.group.id!)}><Undo2 size={15} /> {t('Unmark')}</button>
               </div>
             </div>
             {#if vkPreview}
@@ -1037,8 +1038,8 @@
               <div class="rendered">{r.text}</div>
             {/if}
             <div class="char-count" class:over={r.text.length > VK_POST_CHAR_LIMIT}>
-              {r.text.length.toLocaleString()} chars{#if r.text.length > VK_POST_CHAR_LIMIT}
-                · <TriangleAlert size={12} class="inline-ico" /> exceeds ~{VK_POST_CHAR_LIMIT.toLocaleString()}{/if}
+              {t('{n} chars', { n: r.text.length.toLocaleString() })}{#if r.text.length > VK_POST_CHAR_LIMIT}
+                · <TriangleAlert size={12} class="inline-ico" /> {t('exceeds ~{n}', { n: VK_POST_CHAR_LIMIT.toLocaleString() })}{/if}
             </div>
           </div>
         {/each}

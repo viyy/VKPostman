@@ -16,6 +16,7 @@
   import { nav } from '../lib/nav.svelte';
   import { knownTagsQuery } from '../lib/tags';
   import { undo } from '../lib/undo.svelte';
+  import { t } from '../lib/i18n.svelte';
   import TagSuggestions from './TagSuggestions.svelte';
   import SearchSelect from './SearchSelect.svelte';
   import { Plus, Trash2, ExternalLink, Users } from '@lucide/svelte';
@@ -272,20 +273,20 @@
   const statusLabel = $derived.by(() => {
     switch (saveStatus) {
       case 'dirty':  return '…';
-      case 'saving': return 'Saving…';
-      case 'saved':  return '✓ Saved';
-      case 'error':  return '⚠ Save failed';
+      case 'saving': return t('Saving…');
+      case 'saved':  return t('✓ Saved');
+      case 'error':  return t('⚠ Save failed');
       default:       return '';
     }
   });
 
-  function typeLabel(t: number): string {
-    switch (t) {
-      case 1:  return 'VK link';
-      case 4:  return 'wiki link';
-      case 2:  return 'URL';
-      case 3:  return 'tags';
-      default: return 'text';
+  function typeLabel(type: number): string {
+    switch (type) {
+      case 1:  return t('VK link');
+      case 4:  return t('wiki link');
+      case 2:  return t('URL');
+      case 3:  return t('tags');
+      default: return t('text');
     }
   }
 </script>
@@ -297,29 +298,29 @@
       <button class="btn btn-primary btn-sm" onclick={addNew}><Plus size={15} /> New</button>
     </div>
     {#if !templates}
-      <p class="muted">Loading…</p>
+      <p class="muted">{t('Loading…')}</p>
     {:else if templates.length === 0}
-      <p class="muted">No templates yet.</p>
+      <p class="muted">{t('No templates yet.')}</p>
     {:else}
       <input
         type="text"
         class="search-input"
-        placeholder="Search name, group, alias…"
+        placeholder={t('Search name, group, alias…')}
         bind:value={search}
         aria-label="Search templates"
       />
       {#if filteredTemplates.length === 0}
-        <p class="muted">No templates match “{search}”.</p>
+        <p class="muted">{t('No matches for “{q}”.', { q: search })}</p>
       {:else}
         <div class="list">
-          {#each filteredTemplates as t (t.id)}
+          {#each filteredTemplates as tpl (tpl.id)}
             <button
               class="list-item"
-              class:active={editing?.id === t.id}
-              onclick={() => edit(t)}
+              class:active={editing?.id === tpl.id}
+              onclick={() => edit(tpl)}
             >
-              <strong>{t.name}</strong>
-              <span class="meta">{new Date(t.updatedAt).toLocaleString()}</span>
+              <strong>{tpl.name}</strong>
+              <span class="meta">{new Date(tpl.updatedAt).toLocaleString()}</span>
             </button>
           {/each}
         </div>
@@ -330,28 +331,28 @@
   <section class="card" style="grid-column: span 2;">
     {#if !editing}
       <p class="muted" style="text-align: center; padding: 2rem 0;">
-        Pick a template on the left, or click <em>+ New</em>.
+        {t('Pick a template on the left, or click')} <em>+ {t('New')}</em>.
       </p>
     {:else}
       <div class="card-header">
-        <h3 style="margin: 0;">Edit template</h3>
+        <h3 style="margin: 0;">{t('Edit template')}</h3>
         <div class="row">
           <span class="muted" style="min-width: 5rem; text-align: right;">{statusLabel}</span>
-          <button class="btn btn-ghost btn-sm" onclick={close}>Close</button>
+          <button class="btn btn-ghost btn-sm" onclick={close}>{t('Close')}</button>
         </div>
       </div>
 
       <div class="stack-lg">
         <div class="stack">
-          <label for="t-name">Name</label>
+          <label for="t-name">{t('Name')}</label>
           <input id="t-name" type="text" bind:value={editing.name} />
         </div>
         <div class="stack">
-          <label for="t-desc">Description</label>
+          <label for="t-desc">{t('Description')}</label>
           <input id="t-desc" type="text" bind:value={editing.description} />
         </div>
         <div class="stack">
-          <label for="t-body">Body</label>
+          <label for="t-body">{t('Body')}</label>
           <textarea
             id="t-body"
             bind:this={bodyTextarea}
@@ -370,7 +371,7 @@
                 Completing <code>{`{{ ${autocompleteQuery}…`}</code>
               </span>
             {:else}
-              <span class="muted" style="font-size: 0.75rem;">Insert:</span>
+              <span class="muted" style="font-size: 0.75rem;">{t('Insert:')}</span>
             {/if}
             {#each suggestedKeys as key (key)}
               <button
@@ -381,39 +382,36 @@
             {/each}
             {#if suggestedKeys.length === 0}
               <span class="muted" style="font-size: 0.78rem;">
-                No matches. Type the name — a placeholder row will be added for you.
+                {t('No matches. Type the name — a placeholder row will be added for you.')}
               </span>
             {/if}
           </div>
 
           <span class="muted">
-            Scriban-like <code>{'{{ placeholder }}'}</code> syntax.
-            New keys auto-appear on the Placeholders tab.
-            Optional blocks: <code>{'{{#if key}}…{{else}}…{{/if}}'}</code>
-            and <code>{'{{#unless key}}…{{/unless}}'}</code> — shown only when the value is filled.
+            {t('Scriban-like {code} syntax. New keys auto-appear on the Placeholders tab.', { code: '{{ placeholder }}' })}
+            {t('Optional blocks: {if} and {unless} — shown only when the value is filled.', { if: '{{#if key}}…{{else}}…{{/if}}', unless: '{{#unless key}}…{{/unless}}' })}
           </span>
         </div>
 
         <div class="stack">
-          <div class="field-label">Live preview <span class="muted">(sample values)</span></div>
+          <div class="field-label">{t('Live preview')} <span class="muted">{t('(sample values)')}</span></div>
           <div class="rendered">{preview}</div>
         </div>
 
         <div class="stack">
-          <label for="t-dtags">Default theme tags</label>
+          <label for="t-dtags">{t('Default theme tags')}</label>
           <input id="t-dtags" type="text" bind:value={defaultTagsInput} />
           <TagSuggestions tags={knownTags} current={defaultTagsInput} onpick={addTag} />
         </div>
 
         <div>
-          <h4 style="margin: 1rem 0 0.4rem;">Placeholders used</h4>
+          <h4 style="margin: 1rem 0 0.4rem;">{t('Placeholders used')}</h4>
           <p class="muted" style="margin: 0 0 0.4rem;">
-            Derived from the Body. Edit definitions on the <strong>Placeholders</strong> tab —
-            changes propagate to every template using that key.
+            {t('Derived from the Body. Edit definitions on the Placeholders tab — changes propagate to every template using that key.')}
           </p>
           {#if usedPlaceholders.length === 0}
             <p class="muted">
-              None yet. Type <code>{'{{ my_key }}'}</code> in the Body to add one.
+              {t('None yet. Type {code} in the Body to add one.', { code: '{{ my_key }}' })}
             </p>
           {:else}
             <div class="stack" style="gap: 0.25rem;">
@@ -429,7 +427,7 @@
         </div>
 
         <div>
-          <h4 style="margin: 1rem 0 0.4rem;">Used by groups</h4>
+          <h4 style="margin: 1rem 0 0.4rem;">{t('Used by groups')}</h4>
           {#if editing.id != null}
             <div class="row" style="gap: 0.4rem; margin-bottom: 0.5rem;">
               <div class="grow">
@@ -437,15 +435,15 @@
                   value={undefined}
                   items={unlinkedGroups.map((g) => ({ id: g.id, label: g.displayName, sub: `@${g.screenName}` }))}
                   allowNone={false}
-                  triggerPlaceholder="Link a group to this template…"
-                  searchPlaceholder="Search groups…"
+                  triggerPlaceholder={t('Link a group to this template…')}
+                  searchPlaceholder={t('Search groups…')}
                   onchange={linkGroup}
                 />
               </div>
             </div>
           {/if}
           {#if usingGroups.length === 0}
-            <p class="muted">No groups use this template yet. Pick one above to link it.</p>
+            <p class="muted">{t('No groups use this template yet. Pick one above to link it.')}</p>
           {:else}
             <div class="stack" style="gap: 0.25rem;">
               {#each usingGroups as g (g.id)}
@@ -455,9 +453,9 @@
                   <button
                     type="button"
                     class="btn btn-outline btn-sm"
-                    title="Open this group"
+                    title={t('Open this group')}
                     onclick={() => nav.openGroup(g.id!)}
-                  ><ExternalLink size={14} /> Open</button>
+                  ><ExternalLink size={14} /> {t('Open')}</button>
                 </div>
               {/each}
             </div>
@@ -467,7 +465,7 @@
         {#if editing.id != null}
           <div style="margin-top: 0.5rem;">
             <button class="btn btn-danger btn-sm" onclick={() => remove(editing!)}>
-              <Trash2 size={15} /> Delete template
+              <Trash2 size={15} /> {t('Delete template')}
             </button>
           </div>
         {/if}

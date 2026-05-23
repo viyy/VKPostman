@@ -14,10 +14,11 @@
   import GlobalSearch from './views/GlobalSearch.svelte';
   import { liveQuery } from 'dexie';
   import { localDateStr } from './lib/dates';
+  import { i18n, t } from './lib/i18n.svelte';
   import type { PostDraft } from './lib/types';
   import {
     Send, Search, Moon, Sun, Database, Download, Upload, HardDrive, Lock,
-    TriangleAlert, FileText, LayoutTemplate, Tags, Users, ChartColumn, X, CalendarClock,
+    TriangleAlert, FileText, LayoutTemplate, Tags, Users, ChartColumn, X, CalendarClock, Languages,
   } from '@lucide/svelte';
 
   // Restore the last-used tab, then persist any change. The active tab itself
@@ -221,9 +222,15 @@
   <div class="topbar">
     <span class="brand"><Send size={18} /> VK Postman</span>
     <span class="muted" style="color: rgba(255,255,255,0.75); font-size: 0.78rem;">
-      v{__APP_VERSION__} · offline · local-only
+      v{__APP_VERSION__} · {t('offline · local-only')}
     </span>
     <div style="flex: 1;"></div>
+    <button
+      class="quota"
+      onclick={() => i18n.toggle()}
+      title="Русский / English"
+      aria-label="Toggle language"
+    ><Languages size={14} /> {i18n.locale === 'ru' ? 'RU' : 'EN'}</button>
     {#if storage}
       <button
         class="quota"
@@ -239,52 +246,51 @@
     <button
       class="icon-btn"
       onclick={() => (showSearch = true)}
-      aria-label="Search (Ctrl+K)"
-      title="Search everything (Ctrl+K)"
+      aria-label={t('Search everything (Ctrl+K)')}
+      title={t('Search everything (Ctrl+K)')}
     ><Search size={20} /></button>
     <button
       class="icon-btn"
       onclick={toggleTheme}
-      aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-      title={theme === 'dark' ? 'Light theme' : 'Dark theme'}
+      title={theme === 'dark' ? t('Light theme') : t('Dark theme')}
     >{#if theme === 'dark'}<Sun size={20} />{:else}<Moon size={20} />{/if}</button>
     <button
       class="icon-btn"
       onclick={() => (showData = true)}
-      aria-label="Data tools (subset export / merge import)"
-      title="Data tools: export a selection · merge import"
+      title={t('Data tools: export a selection · merge import')}
     ><Database size={20} /></button>
     <button
       class="icon-btn"
       onclick={doExport}
-      aria-label="Export all data (JSON backup)"
-      title="Export all data (JSON backup)"
+      title={t('Export all data (JSON backup)')}
     ><Download size={20} /></button>
     <button
       class="icon-btn"
       onclick={doImportClick}
-      aria-label="Import data — replace all (JSON)"
-      title="Import data — replace all (JSON)"
+      title={t('Import data — replace all (JSON)')}
     ><Upload size={20} /></button>
   </div>
 
   {#if showBackupReminder}
     <div class="io-banner backup">
       <TriangleAlert size={16} />
-      You haven’t backed up
-      {#if daysSinceExport === Infinity}yet{:else}in {daysSinceExport} days{/if}.
-      Your data lives only in this browser.
-      <button class="link-inline" onclick={doExport}>Export now</button>
-      <button class="link-inline muted-link" onclick={snoozeBackup}>Remind me later</button>
+      {i18n.locale === 'ru'
+        ? (daysSinceExport === Infinity ? 'Вы ещё не делали резервную копию.' : `Резервной копии не было ${daysSinceExport} дн.`)
+        : (daysSinceExport === Infinity ? 'You haven’t backed up yet.' : `You haven’t backed up in ${daysSinceExport} days.`)}
+      {t('Your data lives only in this browser.')}
+      <button class="link-inline" onclick={doExport}>{t('Export now')}</button>
+      <button class="link-inline muted-link" onclick={snoozeBackup}>{t('Remind me later')}</button>
     </div>
   {/if}
 
   {#if showDueReminder}
     <div class="io-banner due">
       <CalendarClock size={16} />
-      {dueCount} planned post{dueCount === 1 ? '' : 's'} due today or overdue.
-      <button class="link-inline" onclick={() => { nav.tab = 'stats'; dueDismissed = true; }}>View agenda</button>
-      <button class="link-inline muted-link" onclick={() => (dueDismissed = true)}>Dismiss</button>
+      {i18n.locale === 'ru'
+        ? `Запланировано постов на сегодня/просрочено: ${dueCount}.`
+        : `${dueCount} planned post${dueCount === 1 ? '' : 's'} due today or overdue.`}
+      <button class="link-inline" onclick={() => { nav.tab = 'stats'; dueDismissed = true; }}>{t('View agenda')}</button>
+      <button class="link-inline muted-link" onclick={() => (dueDismissed = true)}>{t('Dismiss')}</button>
     </div>
   {/if}
 
@@ -299,35 +305,35 @@
       role="tab"
       aria-selected={nav.tab === 'drafts'}
       onclick={() => (nav.tab = 'drafts')}
-    ><FileText size={16} /> Drafts</button>
+    ><FileText size={16} /> {t('Drafts')}</button>
     <button
       class="tab"
       class:active={nav.tab === 'templates'}
       role="tab"
       aria-selected={nav.tab === 'templates'}
       onclick={() => (nav.tab = 'templates')}
-    ><LayoutTemplate size={16} /> Templates</button>
+    ><LayoutTemplate size={16} /> {t('Templates')}</button>
     <button
       class="tab"
       class:active={nav.tab === 'placeholders'}
       role="tab"
       aria-selected={nav.tab === 'placeholders'}
       onclick={() => (nav.tab = 'placeholders')}
-    ><Tags size={16} /> Placeholders</button>
+    ><Tags size={16} /> {t('Placeholders')}</button>
     <button
       class="tab"
       class:active={nav.tab === 'groups'}
       role="tab"
       aria-selected={nav.tab === 'groups'}
       onclick={() => (nav.tab = 'groups')}
-    ><Users size={16} /> Groups</button>
+    ><Users size={16} /> {t('Groups')}</button>
     <button
       class="tab"
       class:active={nav.tab === 'stats'}
       role="tab"
       aria-selected={nav.tab === 'stats'}
       onclick={() => (nav.tab = 'stats')}
-    ><ChartColumn size={16} /> Stats</button>
+    ><ChartColumn size={16} /> {t('Stats')}</button>
   </div>
 
   <main class="content">
@@ -377,18 +383,18 @@
       <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <div class="sc-modal" role="dialog" aria-modal="true" tabindex="-1" aria-label="Keyboard shortcuts" onclick={(e) => e.stopPropagation()}>
         <div class="card-header">
-          <h3 style="margin: 0;">Keyboard shortcuts</h3>
-          <button class="btn btn-ghost btn-sm" onclick={() => (showShortcuts = false)}>Close</button>
+          <h3 style="margin: 0;">{t('Keyboard shortcuts')}</h3>
+          <button class="btn btn-ghost btn-sm" onclick={() => (showShortcuts = false)}>{t('Close')}</button>
         </div>
         <dl class="sc-list">
-          <dt><kbd>Ctrl</kbd>+<kbd>K</kbd></dt><dd>Open global search</dd>
-          <dt><kbd>N</kbd></dt><dd>New draft</dd>
-          <dt><kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>5</kbd></dt><dd>Switch tabs (Drafts / Templates / Placeholders / Groups / Stats)</dd>
-          <dt><kbd>Ctrl</kbd>+<kbd>Enter</kbd></dt><dd>On Drafts: copy next unposted &amp; open vk.com</dd>
-          <dt><kbd>?</kbd></dt><dd>Toggle this help</dd>
-          <dt><kbd>Esc</kbd></dt><dd>Close dialogs</dd>
+          <dt><kbd>Ctrl</kbd>+<kbd>K</kbd></dt><dd>{t('Open global search')}</dd>
+          <dt><kbd>N</kbd></dt><dd>{t('New draft')}</dd>
+          <dt><kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>5</kbd></dt><dd>{t('Switch tabs (Drafts / Templates / Placeholders / Groups / Stats)')}</dd>
+          <dt><kbd>Ctrl</kbd>+<kbd>Enter</kbd></dt><dd>{t('On Drafts: copy next unposted & open vk.com')}</dd>
+          <dt><kbd>?</kbd></dt><dd>{t('Toggle this help')}</dd>
+          <dt><kbd>Esc</kbd></dt><dd>{t('Close dialogs')}</dd>
         </dl>
-        <p class="muted" style="margin: 0.5rem 0 0;">Letter shortcuts are ignored while typing in a field.</p>
+        <p class="muted" style="margin: 0.5rem 0 0;">{t('Letter shortcuts are ignored while typing in a field.')}</p>
       </div>
     </div>
   {/if}
