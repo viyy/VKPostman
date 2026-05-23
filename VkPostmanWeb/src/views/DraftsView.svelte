@@ -4,8 +4,10 @@
   import {
     packWikiLink,
     renderDraftForGroup,
+    renderVkHtml,
     splitWikiLink,
     unionedPlaceholders,
+    VK_POST_CHAR_LIMIT,
   } from '../lib/render';
   import {
     PlaceholderType,
@@ -21,7 +23,7 @@
   import TagSuggestions from './TagSuggestions.svelte';
   import {
     Plus, Copy, Files, Pin, Trash2, Check, Undo2, ExternalLink,
-    GripVertical, Image, X, ChevronDown, TriangleAlert,
+    GripVertical, Image, X, ChevronDown, TriangleAlert, Eye, EyeOff,
   } from '@lucide/svelte';
 
   /** Collapsed state for the collapsible blocks (persists across reloads). */
@@ -43,6 +45,12 @@
   });
 
   let saveStatus = $state<AutosaveStatus>('idle');
+
+  // Show rendered posts as VK-style preview (links) vs raw copyable text.
+  let vkPreview = $state(localStorage.getItem('vkp.vkPreview') === '1');
+  $effect(() => {
+    localStorage.setItem('vkp.vkPreview', vkPreview ? '1' : '0');
+  });
 
   // ---- Draft list search + status filter -----------------------------------
   type StatusFilter = 'all' | 'active' | 'posted';
@@ -176,6 +184,7 @@
         postedAt: { ...(d.postedAt ?? {}) },
         imageNotes: [...(d.imageNotes ?? [])],
         notes: d.notes ?? '',
+        plannedFor: d.plannedFor ?? '',
       };
       themeTagsInput = draft.themeTags.join(' ');
       // Adopt the freshly-loaded draft as the autosave baseline so merely
@@ -477,6 +486,13 @@
     openGroup(next.group);
   }
 
+  /** Open every not-yet-posted group's vk.com page (popup blocker may limit this). */
+  function openAllUnposted() {
+    for (const r of activeRenders) {
+      window.open(`https://vk.com/${r.group.screenName}`, '_blank', 'noopener');
+    }
+  }
+
   // WikiLink value split helpers — the packed value lives in placeholderValues.
   function wikiTarget(key: string): string {
     return splitWikiLink(draft?.placeholderValues[key]).target;
@@ -700,6 +716,16 @@
               placeholder="Reminders, ideas, to-dos for this post…"
             ></textarea>
           </div>
+
+          <div class="stack">
+            <label for="d-plan">Plan to post on <span class="muted">(optional)</span></label>
+            <div class="row" style="gap: 0.4rem;">
+              <input id="d-plan" type="date" style="width: auto;" bind:value={draft.plannedFor} />
+              {#if draft.plannedFor}
+                <button class="btn btn-ghost btn-sm" onclick={() => (draft!.plannedFor = '')}>Clear</button>
+              {/if}
+            </div>
+          </div>
         </div>
         {/if}
       </div>
@@ -852,6 +878,18 @@
           <span class="muted">{postedRenders.length} posted</span>
         {/if}
         <button
+          class="btn btn-ghost btn-sm"
+          title={vkPreview ? 'Show raw copyable text' : 'Show VK-style preview (links)'}
+          aria-pressed={vkPreview}
+          onclick={() => (vkPreview = !vkPreview)}
+        >{#if vkPreview}<EyeOff size={15} /> Raw{:else}<Eye size={15} /> Preview{/if}</button>
+        <button
+          class="btn btn-outline btn-sm"
+          disabled={activeRenders.length === 0}
+          title="Open every unposted group's vk.com page (your browser may block multiple pop-ups)"
+          onclick={openAllUnposted}
+        ><ExternalLink size={15} /> Open all</button>
+        <button
           class="btn btn-primary btn-sm"
           disabled={activeRenders.length === 0}
           title="Copy the next unposted group's text and open its vk.com page"
@@ -900,7 +938,15 @@
                 <button class="btn btn-primary btn-sm" onclick={() => markPosted(r.group.id!)}><Check size={15} /> Posted</button>
               </div>
             </div>
-            <div class="rendered">{r.text}</div>
+            {#if vkPreview}
+              <div class="rendered">{@html renderVkHtml(r.text)}</div>
+            {:else}
+              <div class="rendered">{r.text}</div>
+            {/if}
+            <div class="char-count" class:over={r.text.length > VK_POST_CHAR_LIMIT}>
+              {r.text.length.toLocaleString()} chars{#if r.text.length > VK_POST_CHAR_LIMIT}
+                · <TriangleAlert size={12} class="inline-ico" /> exceeds ~{VK_POST_CHAR_LIMIT.toLocaleString()}{/if}
+            </div>
           </div>
         {/each}
       {/if}
@@ -935,7 +981,15 @@
                 <button class="btn btn-ghost btn-sm" onclick={() => unmarkPosted(r.group.id!)}><Undo2 size={15} /> Unmark</button>
               </div>
             </div>
-            <div class="rendered">{r.text}</div>
+            {#if vkPreview}
+              <div class="rendered">{@html renderVkHtml(r.text)}</div>
+            {:else}
+              <div class="rendered">{r.text}</div>
+            {/if}
+            <div class="char-count" class:over={r.text.length > VK_POST_CHAR_LIMIT}>
+              {r.text.length.toLocaleString()} chars{#if r.text.length > VK_POST_CHAR_LIMIT}
+                · <TriangleAlert size={12} class="inline-ico" /> exceeds ~{VK_POST_CHAR_LIMIT.toLocaleString()}{/if}
+            </div>
           </div>
         {/each}
       {/if}
@@ -1058,6 +1112,24 @@
     font-size: 0.9rem;
   }
   .img-remove:hover { background: var(--vk-danger-bg); color: var(--vk-danger); }
+
+  /* Per-post character counter. */
+  .char-count {
+    margin-top: 0.3rem;
+    font-size: 0.75rem;
+    color: var(--vk-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .char-count.over {
+    color: var(--vk-danger);
+    font-weight: 600;
+  }
+  /* Links in the VK-style preview. */
+  .rendered :global(a) {
+    color: var(--vk-blue);
+    text-decoration: none;
+  }
+  .rendered :global(a:hover) { text-decoration: underline; }
 
   /* Target-group marker filter. */
   .marker-filter {

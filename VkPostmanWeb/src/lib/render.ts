@@ -75,6 +75,44 @@ export function renderPlaceholder(def: PlaceholderDefinition, value: string | un
 }
 
 // ---------------------------------------------------------------------------
+// VK-accurate preview: turn the raw post text into safe HTML where VK markup
+// renders the way it will on vk.com — [target|label] and @mentions become
+// links, bare URLs and #hashtags too. The raw text (for copying) is untouched.
+// ---------------------------------------------------------------------------
+
+/** Approximate VK wall-post text limit; we warn when a rendered post exceeds it. */
+export const VK_POST_CHAR_LIMIT = 16000;
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string),
+  );
+}
+
+const A = (href: string, label: string) =>
+  `<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+
+export function renderVkHtml(text: string): string {
+  let s = escapeHtml(text ?? '');
+  // Bare URLs first (so the vk.com links we synthesize below aren't re-matched).
+  s = s.replace(/(https?:\/\/[^\s<]+)/g, (u) => A(u, u));
+  // [target|label] → link to vk.com/target with the label as text.
+  s = s.replace(/\[([^\]|]+)\|([^\]]+)\]/g, (_, target: string, label: string) =>
+    A(`https://vk.com/${target.trim()}`, label),
+  );
+  // @mention → vk.com/<name> (only after start/whitespace, so it won't touch
+  // the '>@' inside a link we already produced).
+  s = s.replace(/(^|\s)@([A-Za-z0-9_.]+)/g, (_, pre: string, name: string) =>
+    `${pre}${A(`https://vk.com/${name}`, `@${name}`)}`,
+  );
+  // #hashtag → VK feed search.
+  s = s.replace(/(^|\s)#([\p{L}0-9_]+)/gu, (_, pre: string, tag: string) =>
+    `${pre}${A(`https://vk.com/feed?q=%23${encodeURIComponent(tag)}&section=search`, `#${tag}`)}`,
+  );
+  return s;
+}
+
+// ---------------------------------------------------------------------------
 // Built-in placeholders (set by the renderer; never live in the library).
 // ---------------------------------------------------------------------------
 

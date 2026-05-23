@@ -12,9 +12,12 @@
   import { formatBytes, getStorageInfo, requestPersistentStorage, type StorageInfo } from './lib/storage';
   import DataModal from './views/DataModal.svelte';
   import GlobalSearch from './views/GlobalSearch.svelte';
+  import { liveQuery } from 'dexie';
+  import { localDateStr } from './lib/dates';
+  import type { PostDraft } from './lib/types';
   import {
     Send, Search, Moon, Sun, Database, Download, Upload, HardDrive, Lock,
-    TriangleAlert, FileText, LayoutTemplate, Tags, Users, ChartColumn, X,
+    TriangleAlert, FileText, LayoutTemplate, Tags, Users, ChartColumn, X, CalendarClock,
   } from '@lucide/svelte';
 
   // Restore the last-used tab, then persist any change. The active tab itself
@@ -73,6 +76,25 @@
   const showBackupReminder = $derived(
     hasData && Date.now() > snoozeUntil && daysSinceExport >= BACKUP_INTERVAL_DAYS,
   );
+
+  // ---- "Planned posts due" reminder (while the app is open) ----------------
+  let allDrafts = $state<PostDraft[]>([]);
+  let dueDismissed = $state(false);
+  $effect(() => {
+    const s = liveQuery(() => db.drafts.toArray()).subscribe({ next: (v) => (allDrafts = v) });
+    return () => s.unsubscribe();
+  });
+  const dueCount = $derived.by(() => {
+    const today = localDateStr();
+    return allDrafts.filter((d) => {
+      if (!d.plannedFor || d.plannedFor > today) return false;
+      const t = d.targetGroupIds ?? [];
+      const p = d.postedGroupIds ?? [];
+      const fully = t.length > 0 && t.every((id) => p.includes(id));
+      return !fully;
+    }).length;
+  });
+  const showDueReminder = $derived(dueCount > 0 && !dueDismissed);
 
   // ---- Storage quota indicator ---------------------------------------------
   let storage = $state<StorageInfo | null>(null);
@@ -254,6 +276,15 @@
       Your data lives only in this browser.
       <button class="link-inline" onclick={doExport}>Export now</button>
       <button class="link-inline muted-link" onclick={snoozeBackup}>Remind me later</button>
+    </div>
+  {/if}
+
+  {#if showDueReminder}
+    <div class="io-banner due">
+      <CalendarClock size={16} />
+      {dueCount} planned post{dueCount === 1 ? '' : 's'} due today or overdue.
+      <button class="link-inline" onclick={() => { nav.tab = 'stats'; dueDismissed = true; }}>View agenda</button>
+      <button class="link-inline muted-link" onclick={() => (dueDismissed = true)}>Dismiss</button>
     </div>
   {/if}
 
@@ -462,6 +493,14 @@
   }
   .io-banner.ok  { background: var(--vk-banner-ok-bg); color: var(--vk-banner-ok-fg); }
   .io-banner.err { background: var(--vk-banner-err-bg); color: var(--vk-banner-err-fg); }
+  .io-banner.due {
+    background: var(--vk-accent);
+    color: var(--vk-blue);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
 
   .undo-toast {
     position: fixed;

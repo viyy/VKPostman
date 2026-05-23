@@ -7,7 +7,9 @@
     PostTemplate,
     TargetGroup,
   } from '../lib/types';
-  import { Check } from '@lucide/svelte';
+  import { nav } from '../lib/nav.svelte';
+  import { localDateStr, addDaysStr, formatPlanned } from '../lib/dates';
+  import { Check, CalendarClock } from '@lucide/svelte';
 
   const draftsQuery       = liveQuery(() => db.drafts.toArray());
   const groupsQuery       = liveQuery(() => db.groups.toArray());
@@ -35,6 +37,37 @@
     const p = d.postedGroupIds ?? [];
     return t.every((id) => p.includes(id));
   }
+
+  // Upcoming planned posts, bucketed relative to today. Fully-posted and
+  // unplanned drafts are excluded.
+  const agenda = $derived.by(() => {
+    const today = localDateStr();
+    const weekEnd = addDaysStr(7);
+    const buckets: Record<'overdue' | 'today' | 'week' | 'later', PostDraft[]> = {
+      overdue: [], today: [], week: [], later: [],
+    };
+    for (const d of drafts) {
+      const p = d.plannedFor;
+      if (!p || isFullyPosted(d)) continue;
+      if (p < today) buckets.overdue.push(d);
+      else if (p === today) buckets.today.push(d);
+      else if (p <= weekEnd) buckets.week.push(d);
+      else buckets.later.push(d);
+    }
+    for (const k of Object.keys(buckets) as (keyof typeof buckets)[]) {
+      buckets[k].sort((a, b) => (a.plannedFor ?? '').localeCompare(b.plannedFor ?? ''));
+    }
+    return buckets;
+  });
+  const agendaTotal = $derived(
+    agenda.overdue.length + agenda.today.length + agenda.week.length + agenda.later.length,
+  );
+  const agendaSections = [
+    { key: 'overdue', label: 'Overdue' },
+    { key: 'today', label: 'Today' },
+    { key: 'week', label: 'This week' },
+    { key: 'later', label: 'Later' },
+  ] as const;
 
   const draftStatus = $derived.by(() => {
     let fully = 0, inProgress = 0, noGroups = 0;
@@ -95,6 +128,34 @@
 </script>
 
 <div class="stats">
+  <!-- Agenda -->
+  <div class="card">
+    <h3 style="margin: 0 0 0.6rem; display: inline-flex; align-items: center; gap: 0.4rem;">
+      <CalendarClock size={17} /> Agenda
+    </h3>
+    {#if agendaTotal === 0}
+      <p class="muted" style="margin: 0;">
+        No planned posts. Set “Plan to post on” on a draft to see it here.
+      </p>
+    {:else}
+      {#each agendaSections as sec (sec.key)}
+        {#if agenda[sec.key].length > 0}
+          <div class="agenda-section">
+            <div class="agenda-head" class:overdue={sec.key === 'overdue'} class:today={sec.key === 'today'}>
+              {sec.label} <span class="muted">({agenda[sec.key].length})</span>
+            </div>
+            {#each agenda[sec.key] as d (d.id)}
+              <button class="agenda-item" onclick={() => nav.openDraft(d.id!)}>
+                <span class="agenda-date">{formatPlanned(d.plannedFor ?? '')}</span>
+                <span class="agenda-title">{d.title}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      {/each}
+    {/if}
+  </div>
+
   <!-- Overview tiles -->
   <div class="card">
     <h3 style="margin: 0 0 0.6rem;">Overview</h3>
@@ -234,4 +295,40 @@
     min-width: 2px;
   }
   .bar-num { font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+
+  .agenda-section { margin-bottom: 0.5rem; }
+  .agenda-head {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--vk-text-secondary);
+    margin: 0.3rem 0 0.15rem;
+  }
+  .agenda-head.overdue { color: var(--vk-danger); }
+  .agenda-head.today { color: var(--vk-blue); }
+  .agenda-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    width: 100%;
+    text-align: left;
+    appearance: none;
+    border: none;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    padding: 0.3rem 0.4rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .agenda-item:hover { background: var(--vk-hover); }
+  .agenda-date {
+    flex-shrink: 0;
+    width: 5.5rem;
+    font-size: 0.82rem;
+    color: var(--vk-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .agenda-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
