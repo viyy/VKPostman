@@ -15,8 +15,16 @@ const GIS_SRC = 'https://accounts.google.com/gsi/client';
 const LS_CLIENT_ID = 'vkp.gdrive.clientId';
 const LS_LAST = 'vkp.gdrive.lastBackupAt';
 
+// Optional default Client ID baked into the build. Provide it via either a
+// build-time env var (VITE_GOOGLE_CLIENT_ID) or by hard-coding the constant
+// below — the Client ID is public, so committing it is safe. A value saved in
+// localStorage (pasted in the UI) always takes precedence over these.
+const HARDCODED_CLIENT_ID = '';
+const DEFAULT_CLIENT_ID =
+  (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim() || HARDCODED_CLIENT_ID;
+
 class GDrive {
-  clientId = $state(localStorage.getItem(LS_CLIENT_ID) ?? '');
+  clientId = $state(localStorage.getItem(LS_CLIENT_ID) ?? DEFAULT_CLIENT_ID);
   connected = $state(false);
   lastBackupAt = $state<number>(Number(localStorage.getItem(LS_LAST)) || 0);
   busy = $state(false);
