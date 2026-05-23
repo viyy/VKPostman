@@ -7,7 +7,7 @@
   import { downloadExport, exportAll, importFromFile } from './lib/exchange';
   import { nav, type Tab } from './lib/nav.svelte';
   import { undo } from './lib/undo.svelte';
-  import { db, createDraft, onDbChange } from './lib/db';
+  import { db, createDraft } from './lib/db';
   import { gdrive } from './lib/gdrive.svelte';
   import { formatBytes, getStorageInfo, requestPersistentStorage, type StorageInfo } from './lib/storage';
   import DataModal from './views/DataModal.svelte';
@@ -73,25 +73,6 @@
   const showBackupReminder = $derived(
     hasData && Date.now() > snoozeUntil && daysSinceExport >= BACKUP_INTERVAL_DAYS,
   );
-
-  // ---- Google Drive auto-backup --------------------------------------------
-  // A few seconds after the last local change, push a fresh backup if the user
-  // has enabled auto-backup and is connected. Skips silently on failure.
-  let _autoTimer: ReturnType<typeof setTimeout> | undefined;
-  $effect(() => {
-    const off = onDbChange(() => {
-      if (!gdrive.autoBackup || !gdrive.connected) return;
-      clearTimeout(_autoTimer);
-      _autoTimer = setTimeout(async () => {
-        try {
-          await gdrive.backup(JSON.stringify(await exportAll()));
-        } catch {
-          /* offline / token expired — user can back up manually */
-        }
-      }, 8000);
-    });
-    return () => { off(); clearTimeout(_autoTimer); };
-  });
 
   // ---- Storage quota indicator ---------------------------------------------
   let storage = $state<StorageInfo | null>(null);

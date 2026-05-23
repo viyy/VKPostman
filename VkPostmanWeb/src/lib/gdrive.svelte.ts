@@ -13,13 +13,11 @@ const FILE_NAME = 'vk-postman-backup.json';
 const GIS_SRC = 'https://accounts.google.com/gsi/client';
 
 const LS_CLIENT_ID = 'vkp.gdrive.clientId';
-const LS_AUTO = 'vkp.gdrive.auto';
 const LS_LAST = 'vkp.gdrive.lastBackupAt';
 
 class GDrive {
   clientId = $state(localStorage.getItem(LS_CLIENT_ID) ?? '');
   connected = $state(false);
-  autoBackup = $state(localStorage.getItem(LS_AUTO) === '1');
   lastBackupAt = $state<number>(Number(localStorage.getItem(LS_LAST)) || 0);
   busy = $state(false);
 
@@ -39,11 +37,6 @@ class GDrive {
     this.#tokenClient = null;
     this.#token = null;
     this.connected = false;
-  }
-
-  setAutoBackup(v: boolean): void {
-    this.autoBackup = v;
-    localStorage.setItem(LS_AUTO, v ? '1' : '0');
   }
 
   #markBackedUp(): void {

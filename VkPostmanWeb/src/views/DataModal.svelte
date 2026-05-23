@@ -210,14 +210,6 @@
               <LogOut size={15} /> Disconnect
             </button>
           </div>
-          <label class="row" style="gap: 0.5rem; margin-top: 0.5rem; font-weight: 500;">
-            <input
-              type="checkbox"
-              checked={gdrive.autoBackup}
-              onchange={(e) => gdrive.setAutoBackup((e.currentTarget as HTMLInputElement).checked)}
-            />
-            <span>Auto-back up a few seconds after changes</span>
-          </label>
 
           {#if restoreData != null}
             <div class="restore-prompt">
