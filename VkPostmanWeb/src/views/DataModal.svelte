@@ -173,11 +173,6 @@
         <p class="muted" style="margin: 0 0 0.5rem;">
           Paste a Google OAuth <strong>Client ID</strong> (Web type). The Client ID is public —
           safe to store here.
-          <a
-            href="https://github.com/viyy/VKPostman/blob/main/docs/GOOGLE_DRIVE_SETUP.md"
-            target="_blank"
-            rel="noopener"
-          >How to get one →</a>
         </p>
         <div class="row" style="gap: 0.4rem;">
           <input
