@@ -381,6 +381,20 @@ label {
   margin-bottom: 0.6rem;
 }
 
+/* ===== Bulk-select action bar (Drafts / Groups lists) ===== */
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+  padding: 0.4rem 0.5rem;
+  background: var(--vk-accent);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.bulk-bar span { margin-right: auto; }
+
 /* ===== Marker labels on groups ===== */
 .marker-row {
   display: flex;
