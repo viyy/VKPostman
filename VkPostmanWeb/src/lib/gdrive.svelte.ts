@@ -15,8 +15,16 @@ const GIS_SRC = 'https://accounts.google.com/gsi/client';
 const LS_CLIENT_ID = 'vkp.gdrive.clientId';
 const LS_LAST = 'vkp.gdrive.lastBackupAt';
 
+// Optional default Client ID baked into the build. Provide it via either a
+// build-time env var (VITE_GOOGLE_CLIENT_ID) or by hard-coding the constant
+// below — the Client ID is public, so committing it is safe. A value saved in
+// localStorage (pasted in the UI) always takes precedence over these.
+const HARDCODED_CLIENT_ID = '573074703445-67elq2og6i50fabghi7i50bkce7l6eri.apps.googleusercontent.com';
+const DEFAULT_CLIENT_ID =
+  (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim() || HARDCODED_CLIENT_ID;
+
 class GDrive {
-  clientId = $state(localStorage.getItem(LS_CLIENT_ID) ?? '');
+  clientId = $state(localStorage.getItem(LS_CLIENT_ID) ?? DEFAULT_CLIENT_ID);
   connected = $state(false);
   lastBackupAt = $state<number>(Number(localStorage.getItem(LS_LAST)) || 0);
   busy = $state(false);
@@ -140,12 +148,27 @@ class GDrive {
     return res;
   }
 
+  /** Pull Google's human-readable error message out of a failed response. */
+  async #explain(res: Response, fallback: string): Promise<string> {
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = body?.error?.message ?? body?.error_description ?? '';
+    } catch {
+      /* non-JSON body */
+    }
+    if (res.status === 403 && /has not been used|is disabled|accessNotConfigured/i.test(detail)) {
+      return `${detail} — enable the Google Drive API for this project in Google Cloud Console.`;
+    }
+    return detail ? `${fallback}: ${detail}` : `${fallback} (HTTP ${res.status}).`;
+  }
+
   async #findFile(): Promise<{ id: string; modifiedTime: string } | null> {
     const q = encodeURIComponent(`name='${FILE_NAME}'`);
     const url =
       `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(id,name,modifiedTime)`;
     const res = await this.#api(url, { method: 'GET' });
-    if (!res.ok) throw new Error(`Drive list failed (${res.status}).`);
+    if (!res.ok) throw new Error(await this.#explain(res, 'Drive list failed'));
     const data = await res.json();
     const f = data.files?.[0];
     return f ? { id: f.id, modifiedTime: f.modifiedTime } : null;
@@ -161,7 +184,7 @@ class GDrive {
           `https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=media`,
           { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: json },
         );
-        if (!res.ok) throw new Error(`Upload failed (${res.status}).`);
+        if (!res.ok) throw new Error(await this.#explain(res, 'Upload failed'));
       } else {
         const metadata = { name: FILE_NAME, parents: ['appDataFolder'] };
         const boundary = 'vkp' + Math.random().toString(16).slice(2);
@@ -173,7 +196,7 @@ class GDrive {
           'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
           { method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body },
         );
-        if (!res.ok) throw new Error(`Create failed (${res.status}).`);
+        if (!res.ok) throw new Error(await this.#explain(res, 'Create failed'));
       }
       this.#markBackedUp();
     } finally {
@@ -191,7 +214,7 @@ class GDrive {
         `https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`,
         { method: 'GET' },
       );
-      if (!res.ok) throw new Error(`Download failed (${res.status}).`);
+      if (!res.ok) throw new Error(await this.#explain(res, 'Download failed'));
       return await res.json();
     } finally {
       this.busy = false;

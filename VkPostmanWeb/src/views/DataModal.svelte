@@ -171,9 +171,8 @@
 
       {#if editingClientId || !gdrive.configured}
         <p class="muted" style="margin: 0 0 0.5rem;">
-          Paste a Google OAuth <strong>Client ID</strong> (Web type). Create one in Google Cloud →
-          Credentials, set the OAuth consent screen, and add this site's origin to
-          “Authorized JavaScript origins”. The Client ID is public — safe to store here.
+          Paste a Google OAuth <strong>Client ID</strong> (Web type). The Client ID is public —
+          safe to store here.
         </p>
         <div class="row" style="gap: 0.4rem;">
           <input
