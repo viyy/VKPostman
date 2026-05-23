@@ -463,6 +463,7 @@ function assertDraft(x: unknown, i: number): PostDraft {
     themeTags: asStringArray(r.themeTags),
     imageNotes: asStringArray(r.imageNotes),
     notes: asStringOrEmpty(r.notes),
+    plannedFor: typeof r.plannedFor === 'string' ? r.plannedFor : undefined,
     targetGroupIds: asArray(r.targetGroupIds).map((v) => Number(v)),
     // Older exports (and v1 files) won't have these — default to empty/undefined.
     postedGroupIds: asArray(r.postedGroupIds).map((v) => Number(v)),

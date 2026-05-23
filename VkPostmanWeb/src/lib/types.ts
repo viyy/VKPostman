@@ -72,6 +72,8 @@ export interface PostDraft {
   imageNotes?: string[];
   /** Free-text scratch notes for the author (not rendered into posts). */
   notes?: string;
+  /** Planned posting date (YYYY-MM-DD). Drives the agenda + due reminder. */
+  plannedFor?: string;
   targetGroupIds: number[];
   /** Group ids the user has marked as already posted (per-draft progress tracking). */
   postedGroupIds: number[];
