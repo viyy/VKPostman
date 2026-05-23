@@ -8,6 +8,7 @@
   import { nav, type Tab } from './lib/nav.svelte';
   import { undo } from './lib/undo.svelte';
   import { db, createDraft } from './lib/db';
+  import { gdrive } from './lib/gdrive.svelte';
   import { formatBytes, getStorageInfo, requestPersistentStorage, type StorageInfo } from './lib/storage';
   import DataModal from './views/DataModal.svelte';
   import GlobalSearch from './views/GlobalSearch.svelte';
@@ -64,8 +65,10 @@
     localStorage.setItem('vkp.backupSnoozeUntil', String(snoozeUntil));
   }
 
+  // "Backed up" = a local JSON export OR a Google Drive backup, whichever's newer.
+  const lastBackupTime = $derived(Math.max(lastExportAt, gdrive.lastBackupAt));
   const daysSinceExport = $derived(
-    lastExportAt ? Math.floor((Date.now() - lastExportAt) / 86_400_000) : Infinity,
+    lastBackupTime ? Math.floor((Date.now() - lastBackupTime) / 86_400_000) : Infinity,
   );
   const showBackupReminder = $derived(
     hasData && Date.now() > snoozeUntil && daysSinceExport >= BACKUP_INTERVAL_DAYS,

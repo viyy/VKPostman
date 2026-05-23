@@ -1,7 +1,7 @@
 {
   "name": "vk-postman-web",
   "private": true,
-  "version": "0.8.0",
+  "version": "0.9.0",
   "type": "module",
   "description": "VK Postman — web/PWA edition. Installable, offline, local-only (IndexedDB).",
   "scripts": {

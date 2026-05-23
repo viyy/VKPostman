@@ -3,12 +3,16 @@
   import { db } from '../lib/db';
   import {
     downloadExport,
+    exportAll,
     exportSubset,
+    importFromJson,
+    mergeFromJson,
     mergeFromFile,
     type SubsetSelection,
   } from '../lib/exchange';
+  import { gdrive } from '../lib/gdrive.svelte';
   import type { PostDraft, PostTemplate, TargetGroup } from '../lib/types';
-  import { Upload, Download } from '@lucide/svelte';
+  import { Upload, Download, Cloud, CloudUpload, CloudDownload, LogOut } from '@lucide/svelte';
 
   interface Props {
     onclose: () => void;
@@ -44,6 +48,69 @@
   }
 
   let importInput: HTMLInputElement | undefined = $state();
+
+  // ---- Google Drive ---------------------------------------------------------
+  let clientIdInput = $state(gdrive.clientId);
+  let editingClientId = $state(!gdrive.configured);
+  let restoreData = $state<unknown | null>(null);
+
+  function fmtTime(ms: number): string {
+    return ms ? new Date(ms).toLocaleString() : 'never';
+  }
+
+  function saveClientId() {
+    gdrive.setClientId(clientIdInput);
+    editingClientId = false;
+  }
+
+  async function driveConnect() {
+    try {
+      await gdrive.connect();
+      onresult({ ok: true, text: 'Connected to Google Drive.' });
+    } catch (err) {
+      onresult({ ok: false, text: `Google sign-in failed: ${(err as Error).message}` });
+    }
+  }
+
+  async function driveBackup() {
+    try {
+      const json = JSON.stringify(await exportAll());
+      await gdrive.backup(json);
+      onresult({ ok: true, text: 'Backed up to Google Drive.' });
+    } catch (err) {
+      onresult({ ok: false, text: `Drive backup failed: ${(err as Error).message}` });
+    }
+  }
+
+  async function driveRestoreFetch() {
+    try {
+      const data = await gdrive.restore();
+      if (data == null) {
+        onresult({ ok: false, text: 'No backup found in your Drive yet.' });
+        return;
+      }
+      restoreData = data; // ask Replace vs Merge below
+    } catch (err) {
+      onresult({ ok: false, text: `Drive restore failed: ${(err as Error).message}` });
+    }
+  }
+
+  async function applyRestore(mode: 'replace' | 'merge') {
+    if (restoreData == null) return;
+    try {
+      const sum = mode === 'replace' ? await importFromJson(restoreData) : await mergeFromJson(restoreData);
+      restoreData = null;
+      onresult({
+        ok: true,
+        text:
+          `${mode === 'replace' ? 'Replaced from' : 'Merged from'} Drive: ` +
+          `${sum.drafts} drafts, ${sum.groups} groups, ${sum.templates} templates, ${sum.placeholders} placeholders.`,
+      });
+      onclose();
+    } catch (err) {
+      onresult({ ok: false, text: `Restore failed: ${(err as Error).message}` });
+    }
+  }
 
   async function doExportSubset() {
     try {
@@ -95,6 +162,66 @@
       <h3 style="margin: 0;">Data tools</h3>
       <button class="btn btn-ghost btn-sm" onclick={onclose}>Close</button>
     </div>
+
+    <!-- ===== Google Drive ===== -->
+    <section class="block">
+      <h4 style="margin: 0 0 0.3rem; display: inline-flex; align-items: center; gap: 0.4rem;">
+        <Cloud size={16} /> Google Drive backup
+      </h4>
+
+      {#if editingClientId || !gdrive.configured}
+        <p class="muted" style="margin: 0 0 0.5rem;">
+          Paste a Google OAuth <strong>Client ID</strong> (Web type). Create one in Google Cloud →
+          Credentials, set the OAuth consent screen, and add this site's origin to
+          “Authorized JavaScript origins”. The Client ID is public — safe to store here.
+        </p>
+        <div class="row" style="gap: 0.4rem;">
+          <input
+            type="text"
+            class="grow"
+            placeholder="xxxxx.apps.googleusercontent.com"
+            bind:value={clientIdInput}
+          />
+          <button class="btn btn-primary btn-sm" disabled={!clientIdInput.trim()} onclick={saveClientId}>Save</button>
+          {#if gdrive.configured}
+            <button class="btn btn-ghost btn-sm" onclick={() => (editingClientId = false)}>Cancel</button>
+          {/if}
+        </div>
+      {:else}
+        <p class="muted" style="margin: 0 0 0.5rem;">
+          Stores one hidden backup file in your Drive’s app folder. Last backup:
+          <strong>{fmtTime(gdrive.lastBackupAt)}</strong>.
+          <button type="button" class="link-inline" onclick={() => (editingClientId = true)}>change Client ID</button>
+        </p>
+
+        {#if !gdrive.connected}
+          <button class="btn btn-outline btn-sm" disabled={gdrive.busy} onclick={driveConnect}>
+            <Cloud size={15} /> Connect Google Drive
+          </button>
+        {:else}
+          <div class="row" style="gap: 0.4rem; flex-wrap: wrap;">
+            <button class="btn btn-primary btn-sm" disabled={gdrive.busy} onclick={driveBackup}>
+              <CloudUpload size={15} /> Back up now
+            </button>
+            <button class="btn btn-outline btn-sm" disabled={gdrive.busy} onclick={driveRestoreFetch}>
+              <CloudDownload size={15} /> Restore from Drive
+            </button>
+            <button class="btn btn-ghost btn-sm" onclick={() => gdrive.signOut()}>
+              <LogOut size={15} /> Disconnect
+            </button>
+          </div>
+
+          {#if restoreData != null}
+            <div class="restore-prompt">
+              <span>Backup downloaded. Apply it how?</span>
+              <button class="btn btn-danger btn-sm" onclick={() => applyRestore('replace')}>Replace all</button>
+              <button class="btn btn-outline btn-sm" onclick={() => applyRestore('merge')}>Merge / add</button>
+              <button class="btn btn-ghost btn-sm" onclick={() => (restoreData = null)}>Cancel</button>
+            </div>
+          {/if}
+        {/if}
+      {/if}
+    </section>
 
     <!-- ===== Merge import ===== -->
     <section class="block">
@@ -217,5 +344,17 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .restore-prompt {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.6rem;
+    padding: 0.6rem;
+    border: 1px solid var(--vk-border);
+    border-radius: var(--radius-sm);
+    background: var(--vk-surface-alt);
+    font-size: 0.9rem;
   }
 </style>
