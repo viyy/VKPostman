@@ -1,6 +1,7 @@
 <script lang="ts">
   import { liveQuery } from 'dexie';
   import { db, createDraft, duplicateDraft, saveDraft, deleteDraft } from '../lib/db';
+  import { exportSubset, downloadExport } from '../lib/exchange';
   import {
     packWikiLink,
     renderDraftForGroup,
@@ -23,7 +24,7 @@
   import TagSuggestions from './TagSuggestions.svelte';
   import {
     Plus, Copy, Files, Pin, Trash2, Check, Undo2, ExternalLink,
-    GripVertical, Image, X, ChevronDown, TriangleAlert, Eye, EyeOff,
+    GripVertical, Image, X, ChevronDown, TriangleAlert, Eye, EyeOff, Download, Square, CheckSquare,
   } from '@lucide/svelte';
 
   /** Collapsed state for the collapsible blocks (persists across reloads). */
@@ -367,6 +368,40 @@
     return [...matched].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   });
 
+  // ---- Bulk select ---------------------------------------------------------
+  let bulkMode = $state(false);
+  let bulkSel = $state<Set<number>>(new Set());
+
+  function toggleBulkMode() {
+    bulkMode = !bulkMode;
+    bulkSel = new Set();
+  }
+  function toggleBulk(id: number) {
+    const next = new Set(bulkSel);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    bulkSel = next;
+  }
+  async function bulkDelete() {
+    const ids = [...bulkSel];
+    if (ids.length === 0) return;
+    const snaps = ((await Promise.all(ids.map((id) => db.drafts.get(id)))).filter(Boolean)) as PostDraft[];
+    await Promise.all(ids.map((id) => deleteDraft(id)));
+    if (currentId != null && bulkSel.has(currentId)) currentId = null;
+    bulkSel = new Set();
+    bulkMode = false;
+    undo.offer(`Deleted ${snaps.length} draft${snaps.length === 1 ? '' : 's'}`, async () => {
+      await Promise.all(snaps.map((s) => db.drafts.put(s)));
+    });
+  }
+  async function bulkExport() {
+    const ids = [...bulkSel];
+    if (ids.length === 0) return;
+    const data = await exportSubset({ templateIds: [], groupIds: [], draftIds: ids });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    downloadExport(data, `vk-postman-drafts-${stamp}.json`);
+  }
+
   // ---- Commands ------------------------------------------------------------
   async function newDraft() {
     await autosave.flush();
@@ -529,8 +564,23 @@
   <aside class="card">
     <div class="card-header">
       <h3 style="margin: 0;">Drafts</h3>
-      <button class="btn btn-primary btn-sm" onclick={newDraft}><Plus size={15} /> New</button>
+      <div class="row">
+        {#if drafts && drafts.length > 0}
+          <button class="btn btn-ghost btn-sm" onclick={toggleBulkMode}>
+            {bulkMode ? 'Done' : 'Select'}
+          </button>
+        {/if}
+        <button class="btn btn-primary btn-sm" onclick={newDraft}><Plus size={15} /> New</button>
+      </div>
     </div>
+
+    {#if bulkMode && bulkSel.size > 0}
+      <div class="bulk-bar">
+        <span>{bulkSel.size} selected</span>
+        <button class="btn btn-outline btn-sm" onclick={bulkExport}><Download size={14} /> Export</button>
+        <button class="btn btn-danger btn-sm" onclick={bulkDelete}><Trash2 size={14} /> Delete</button>
+      </div>
+    {/if}
 
     {#if !drafts}
       <p class="muted">Loading…</p>
@@ -566,11 +616,11 @@
           {#each filteredDrafts as d (d.id)}
             <button
               class="list-item"
-              class:active={currentId === d.id}
-              onclick={() => d.id != null && selectDraft(d.id)}
+              class:active={currentId === d.id || (bulkMode && bulkSel.has(d.id!))}
+              onclick={() => { if (d.id == null) return; bulkMode ? toggleBulk(d.id) : selectDraft(d.id); }}
             >
               <strong>
-                {#if d.pinned}<Pin size={13} class="inline-ico" />{/if}{#if isFullyPosted(d)}<Check size={14} class="inline-ico done-ico" />{/if}{d.title}
+                {#if bulkMode}{#if bulkSel.has(d.id!)}<CheckSquare size={14} class="inline-ico" />{:else}<Square size={14} class="inline-ico" />{/if}{/if}{#if d.pinned}<Pin size={13} class="inline-ico" />{/if}{#if isFullyPosted(d)}<Check size={14} class="inline-ico done-ico" />{/if}{d.title}
               </strong>
               <span class="meta">{new Date(d.updatedAt).toLocaleString()}</span>
               {#if progressOf(d).total > 0}

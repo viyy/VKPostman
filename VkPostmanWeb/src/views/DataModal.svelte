@@ -10,7 +10,7 @@
     mergeFromFile,
     type SubsetSelection,
   } from '../lib/exchange';
-  import { gdrive } from '../lib/gdrive.svelte';
+  import { gdrive, type DriveBackup } from '../lib/gdrive.svelte';
   import type { PostDraft, PostTemplate, TargetGroup } from '../lib/types';
   import { Upload, Download, Cloud, CloudUpload, CloudDownload, LogOut } from '@lucide/svelte';
 
@@ -53,9 +53,14 @@
   let clientIdInput = $state(gdrive.clientId);
   let editingClientId = $state(!gdrive.configured);
   let restoreData = $state<unknown | null>(null);
+  let backups = $state<DriveBackup[] | null>(null); // null = list not loaded/open
 
   function fmtTime(ms: number): string {
     return ms ? new Date(ms).toLocaleString() : 'never';
+  }
+  function fmtIso(s: string): string {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? s : d.toLocaleString();
   }
 
   function saveClientId() {
@@ -82,16 +87,25 @@
     }
   }
 
-  async function driveRestoreFetch() {
+  async function driveShowBackups() {
     try {
-      const data = await gdrive.restore();
-      if (data == null) {
-        onresult({ ok: false, text: 'No backup found in your Drive yet.' });
+      const list = await gdrive.listBackups();
+      if (list.length === 0) {
+        onresult({ ok: false, text: 'No backups found in your Drive yet.' });
         return;
       }
-      restoreData = data; // ask Replace vs Merge below
+      backups = list;
     } catch (err) {
-      onresult({ ok: false, text: `Drive restore failed: ${(err as Error).message}` });
+      onresult({ ok: false, text: `Couldn’t list Drive backups: ${(err as Error).message}` });
+    }
+  }
+
+  async function pickBackup(b: DriveBackup) {
+    try {
+      restoreData = await gdrive.download(b.id);
+      backups = null; // close the list; show Replace/Merge prompt
+    } catch (err) {
+      onresult({ ok: false, text: `Download failed: ${(err as Error).message}` });
     }
   }
 
@@ -188,7 +202,7 @@
         </div>
       {:else}
         <p class="muted" style="margin: 0 0 0.5rem;">
-          Stores one hidden backup file in your Drive’s app folder. Last backup:
+          Keeps the last {12} timestamped snapshots in your Drive’s hidden app folder. Last backup:
           <strong>{fmtTime(gdrive.lastBackupAt)}</strong>.
           <button type="button" class="link-inline" onclick={() => (editingClientId = true)}>change Client ID</button>
         </p>
@@ -202,13 +216,29 @@
             <button class="btn btn-primary btn-sm" disabled={gdrive.busy} onclick={driveBackup}>
               <CloudUpload size={15} /> Back up now
             </button>
-            <button class="btn btn-outline btn-sm" disabled={gdrive.busy} onclick={driveRestoreFetch}>
-              <CloudDownload size={15} /> Restore from Drive
+            <button class="btn btn-outline btn-sm" disabled={gdrive.busy} onclick={driveShowBackups}>
+              <CloudDownload size={15} /> Restore…
             </button>
             <button class="btn btn-ghost btn-sm" onclick={() => gdrive.signOut()}>
               <LogOut size={15} /> Disconnect
             </button>
           </div>
+
+          {#if backups != null}
+            <div class="backup-list">
+              <div class="row" style="justify-content: space-between;">
+                <strong>Choose a snapshot to restore</strong>
+                <button class="btn btn-ghost btn-sm" onclick={() => (backups = null)}>Close</button>
+              </div>
+              {#each backups as b (b.id)}
+                <div class="backup-row">
+                  <span class="grow">{fmtIso(b.modifiedTime)}</span>
+                  <span class="muted">{(b.size / 1024).toFixed(0)} KB</span>
+                  <button class="btn btn-outline btn-sm" disabled={gdrive.busy} onclick={() => pickBackup(b)}>Use</button>
+                </div>
+              {/each}
+            </div>
+          {/if}
 
           {#if restoreData != null}
             <div class="restore-prompt">
@@ -356,4 +386,21 @@
     background: var(--vk-surface-alt);
     font-size: 0.9rem;
   }
+  .backup-list {
+    margin-top: 0.6rem;
+    padding: 0.5rem;
+    border: 1px solid var(--vk-border);
+    border-radius: var(--radius-sm);
+    max-height: 260px;
+    overflow: auto;
+  }
+  .backup-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.35rem 0.25rem;
+    border-top: 1px solid var(--vk-border);
+    font-size: 0.88rem;
+  }
+  .backup-row:first-of-type { border-top: none; }
 </style>

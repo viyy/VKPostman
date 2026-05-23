@@ -8,7 +8,8 @@
   import TagSuggestions from './TagSuggestions.svelte';
   import SearchSelect from './SearchSelect.svelte';
   import { nav } from '../lib/nav.svelte';
-  import { Plus, Pin, Trash2, ExternalLink } from '@lucide/svelte';
+  import { exportSubset, downloadExport } from '../lib/exchange';
+  import { Plus, Pin, Trash2, ExternalLink, Download, Square, CheckSquare } from '@lucide/svelte';
 
   // Live IndexedDB queries — re-run automatically when the data changes.
   const groupsQuery = liveQuery(() => db.groups.orderBy('displayName').toArray());
@@ -132,6 +133,40 @@
     if (g) await edit(g);
   }
 
+  // ---- Bulk select ---------------------------------------------------------
+  let bulkMode = $state(false);
+  let bulkSel = $state<Set<number>>(new Set());
+
+  function toggleBulkMode() {
+    bulkMode = !bulkMode;
+    bulkSel = new Set();
+  }
+  function toggleBulk(id: number) {
+    const next = new Set(bulkSel);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    bulkSel = next;
+  }
+  async function bulkDelete() {
+    const ids = [...bulkSel];
+    if (ids.length === 0) return;
+    const snaps = ((await Promise.all(ids.map((id) => db.groups.get(id)))).filter(Boolean)) as TargetGroup[];
+    await Promise.all(ids.map((id) => deleteGroup(id)));
+    if (editing && editing.id != null && bulkSel.has(editing.id)) editing = null;
+    bulkSel = new Set();
+    bulkMode = false;
+    undo.offer(`Deleted ${snaps.length} group${snaps.length === 1 ? '' : 's'}`, async () => {
+      await Promise.all(snaps.map((s) => db.groups.put(s)));
+    });
+  }
+  async function bulkExport() {
+    const ids = [...bulkSel];
+    if (ids.length === 0) return;
+    const data = await exportSubset({ templateIds: [], groupIds: ids, draftIds: [] });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    downloadExport(data, `vk-postman-groups-${stamp}.json`);
+  }
+
   async function removeGroup(g: TargetGroup) {
     if (!g.id) return;
     const snap = $state.snapshot(g) as TargetGroup;
@@ -160,8 +195,23 @@
   <aside class="card">
     <div class="card-header">
       <h3 style="margin: 0;">Groups</h3>
-      <button class="btn btn-primary btn-sm" onclick={addNew}><Plus size={15} /> Add</button>
+      <div class="row">
+        {#if groups && groups.length > 0}
+          <button class="btn btn-ghost btn-sm" onclick={toggleBulkMode}>
+            {bulkMode ? 'Done' : 'Select'}
+          </button>
+        {/if}
+        <button class="btn btn-primary btn-sm" onclick={addNew}><Plus size={15} /> Add</button>
+      </div>
     </div>
+
+    {#if bulkMode && bulkSel.size > 0}
+      <div class="bulk-bar">
+        <span>{bulkSel.size} selected</span>
+        <button class="btn btn-outline btn-sm" onclick={bulkExport}><Download size={14} /> Export</button>
+        <button class="btn btn-danger btn-sm" onclick={bulkDelete}><Trash2 size={14} /> Delete</button>
+      </div>
+    {/if}
 
     {#if !groups}
       <p class="muted">Loading…</p>
@@ -182,10 +232,10 @@
           {#each filteredGroups as g (g.id)}
             <button
               class="list-item"
-              class:active={editing?.id === g.id}
-              onclick={() => edit(g)}
+              class:active={editing?.id === g.id || (bulkMode && bulkSel.has(g.id!))}
+              onclick={() => { if (g.id == null) return; bulkMode ? toggleBulk(g.id) : edit(g); }}
             >
-              <strong>{#if g.pinned}<Pin size={13} class="inline-ico" />{/if}{g.displayName}</strong>
+              <strong>{#if bulkMode}{#if bulkSel.has(g.id!)}<CheckSquare size={14} class="inline-ico" />{:else}<Square size={14} class="inline-ico" />{/if}{/if}{#if g.pinned}<Pin size={13} class="inline-ico" />{/if}{g.displayName}</strong>
               <span class="meta">
                 @{g.screenName} · template: <em>{templateName(g.postTemplateId)}</em>
               </span>

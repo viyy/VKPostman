@@ -9,8 +9,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
-const FILE_NAME = 'vk-postman-backup.json';
+const FILE_PREFIX = 'vk-postman-backup';
 const GIS_SRC = 'https://accounts.google.com/gsi/client';
+/** How many timestamped snapshots to keep in Drive; older ones are pruned. */
+const MAX_BACKUPS = 12;
+
+export interface DriveBackup {
+  id: string;
+  name: string;
+  modifiedTime: string;
+  size: number;
+}
 
 const LS_CLIENT_ID = 'vkp.gdrive.clientId';
 const LS_LAST = 'vkp.gdrive.lastBackupAt';
@@ -163,55 +172,63 @@ class GDrive {
     return detail ? `${fallback}: ${detail}` : `${fallback} (HTTP ${res.status}).`;
   }
 
-  async #findFile(): Promise<{ id: string; modifiedTime: string } | null> {
-    const q = encodeURIComponent(`name='${FILE_NAME}'`);
+  /** List backup snapshots, newest first. */
+  async listBackups(): Promise<DriveBackup[]> {
+    const q = encodeURIComponent(`name contains '${FILE_PREFIX}'`);
     const url =
-      `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(id,name,modifiedTime)`;
+      `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}` +
+      `&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime,size)`;
     const res = await this.#api(url, { method: 'GET' });
     if (!res.ok) throw new Error(await this.#explain(res, 'Drive list failed'));
     const data = await res.json();
-    const f = data.files?.[0];
-    return f ? { id: f.id, modifiedTime: f.modifiedTime } : null;
+    return (data.files ?? []).map((f: any) => ({
+      id: f.id,
+      name: f.name,
+      modifiedTime: f.modifiedTime,
+      size: Number(f.size) || 0,
+    }));
   }
 
-  /** Upload `json` as the single backup file (creating or overwriting it). */
+  async #delete(id: string): Promise<void> {
+    await this.#api(`https://www.googleapis.com/drive/v3/files/${id}`, { method: 'DELETE' });
+  }
+
+  /** Upload `json` as a new timestamped snapshot, then prune old ones. */
   async backup(json: string): Promise<void> {
     this.busy = true;
     try {
-      const existing = await this.#findFile();
-      if (existing) {
-        const res = await this.#api(
-          `https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=media`,
-          { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: json },
-        );
-        if (!res.ok) throw new Error(await this.#explain(res, 'Upload failed'));
-      } else {
-        const metadata = { name: FILE_NAME, parents: ['appDataFolder'] };
-        const boundary = 'vkp' + Math.random().toString(16).slice(2);
-        const body =
-          `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
-          `${JSON.stringify(metadata)}\r\n` +
-          `--${boundary}\r\nContent-Type: application/json\r\n\r\n${json}\r\n--${boundary}--`;
-        const res = await this.#api(
-          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
-          { method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body },
-        );
-        if (!res.ok) throw new Error(await this.#explain(res, 'Create failed'));
-      }
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const metadata = { name: `${FILE_PREFIX}-${stamp}.json`, parents: ['appDataFolder'] };
+      const boundary = 'vkp' + Math.random().toString(16).slice(2);
+      const body =
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+        `${JSON.stringify(metadata)}\r\n` +
+        `--${boundary}\r\nContent-Type: application/json\r\n\r\n${json}\r\n--${boundary}--`;
+      const res = await this.#api(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+        { method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body },
+      );
+      if (!res.ok) throw new Error(await this.#explain(res, 'Backup failed'));
       this.#markBackedUp();
+
+      // Prune to the newest MAX_BACKUPS.
+      try {
+        const all = await this.listBackups();
+        for (const old of all.slice(MAX_BACKUPS)) await this.#delete(old.id);
+      } catch {
+        /* pruning is best-effort */
+      }
     } finally {
       this.busy = false;
     }
   }
 
-  /** Download the backup file's parsed JSON, or null if none exists. */
-  async restore(): Promise<unknown | null> {
+  /** Download a specific snapshot's parsed JSON by file id. */
+  async download(id: string): Promise<unknown> {
     this.busy = true;
     try {
-      const f = await this.#findFile();
-      if (!f) return null;
       const res = await this.#api(
-        `https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`,
+        `https://www.googleapis.com/drive/v3/files/${id}?alt=media`,
         { method: 'GET' },
       );
       if (!res.ok) throw new Error(await this.#explain(res, 'Download failed'));
