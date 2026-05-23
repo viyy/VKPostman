@@ -67,6 +67,31 @@ class VkPostmanDb extends Dexie {
 export const db = new VkPostmanDb();
 
 // ---------------------------------------------------------------------------
+// Lightweight change notification — lets features (e.g. Drive auto-backup)
+// react to any local data mutation without polling.
+// ---------------------------------------------------------------------------
+
+type ChangeListener = () => void;
+const changeListeners = new Set<ChangeListener>();
+
+export function onDbChange(fn: ChangeListener): () => void {
+  changeListeners.add(fn);
+  return () => changeListeners.delete(fn);
+}
+
+function emitDbChange(): void {
+  for (const fn of changeListeners) {
+    try { fn(); } catch { /* ignore listener errors */ }
+  }
+}
+
+for (const table of [db.drafts, db.templates, db.groups, db.placeholders]) {
+  table.hook('creating', () => { emitDbChange(); });
+  table.hook('updating', () => { emitDbChange(); });
+  table.hook('deleting', () => { emitDbChange(); });
+}
+
+// ---------------------------------------------------------------------------
 // CRUD helpers
 // ---------------------------------------------------------------------------
 
