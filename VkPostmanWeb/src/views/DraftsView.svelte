@@ -146,6 +146,25 @@
     draft.imageNotes = (draft.imageNotes ?? []).filter((n) => n !== name);
   }
 
+  /** For each image filename in the current draft, list other drafts that also
+   * reference it — feeds an inline "duplicate photo" warning next to the row. */
+  const duplicatedImages = $derived.by(() => {
+    const map = new Map<string, Array<{ id: number; title: string; fullyPosted: boolean }>>();
+    if (!draft || !drafts) return map;
+    const currentImages = new Set(draft.imageNotes ?? []);
+    if (currentImages.size === 0) return map;
+    for (const d of drafts) {
+      if (d.id === draft.id) continue;
+      for (const n of d.imageNotes ?? []) {
+        if (!currentImages.has(n)) continue;
+        const list = map.get(n) ?? [];
+        list.push({ id: d.id!, title: d.title, fullyPosted: isFullyPosted(d) });
+        map.set(n, list);
+      }
+    }
+    return map;
+  });
+
   function onImageDrop(e: DragEvent) {
     e.preventDefault();
     dragOver = false;
@@ -746,8 +765,16 @@
             {#if (draft.imageNotes ?? []).length > 0}
               <ul class="image-list">
                 {#each draft.imageNotes ?? [] as name (name)}
-                  <li>
+                  {@const dups = duplicatedImages.get(name)}
+                  <li class:has-dup={dups && dups.length > 0}>
                     <span class="img-name"><Image size={14} class="inline-ico" /> {name}</span>
+                    {#if dups && dups.length > 0}
+                      <button
+                        class="img-dup"
+                        title={t('Also in: {list}', { list: dups.map((d) => d.fullyPosted ? `${d.title} (${t('Posted')})` : d.title).join(', ') })}
+                        onclick={() => nav.openDraft(dups[0].id)}
+                      ><TriangleAlert size={13} /></button>
+                    {/if}
                     <button
                       class="img-remove"
                       aria-label={`Remove ${name}`}
@@ -1163,6 +1190,17 @@
     font-size: 0.9rem;
   }
   .img-remove:hover { background: var(--vk-danger-bg); color: var(--vk-danger); }
+  .image-list li.has-dup { border-color: var(--vk-warning); }
+  .img-dup {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--vk-warning);
+    cursor: pointer;
+    padding: 0.15rem 0.35rem;
+    border-radius: 4px;
+  }
+  .img-dup:hover { background: var(--vk-hover); }
 
   /* Per-post character counter. */
   .char-count {

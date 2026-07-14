@@ -126,6 +126,50 @@
   const maxTplPosts   = $derived(Math.max(1, ...templateUsage.map((r) => r.posts)));
 
   const pct = (n: number, max: number) => `${Math.round((n / max) * 100)}%`;
+
+  // ---- Calendar heatmap (last 52 weeks) ------------------------------------
+  const postsByDay = $derived.by(() => {
+    const m = new Map<string, number>();
+    for (const d of drafts) {
+      for (const iso of Object.values(d.postedAt ?? {})) {
+        const dt = new Date(iso);
+        if (Number.isNaN(dt.getTime())) continue;
+        const key = localDateStr(dt);
+        m.set(key, (m.get(key) ?? 0) + 1);
+      }
+    }
+    return m;
+  });
+
+  interface HeatCell { date: string; count: number; inFuture: boolean; }
+
+  const heatmap = $derived.by(() => {
+    const today = new Date();
+    const todayKey = localDateStr(today);
+    const dow = today.getDay(); // 0=Sun … 6=Sat
+    const start = new Date(today);
+    start.setDate(start.getDate() - dow - 51 * 7);
+    const weeks: HeatCell[][] = [];
+    for (let w = 0; w < 52; w++) {
+      const col: HeatCell[] = [];
+      for (let d = 0; d < 7; d++) {
+        const cell = new Date(start);
+        cell.setDate(cell.getDate() + w * 7 + d);
+        const key = localDateStr(cell);
+        col.push({ date: key, count: postsByDay.get(key) ?? 0, inFuture: key > todayKey });
+      }
+      weeks.push(col);
+    }
+    return weeks;
+  });
+
+  function heatLevel(n: number): 0 | 1 | 2 | 3 | 4 {
+    if (n <= 0) return 0;
+    if (n === 1) return 1;
+    if (n === 2) return 2;
+    if (n <= 4) return 3;
+    return 4;
+  }
 </script>
 
 <div class="stats">
@@ -186,6 +230,35 @@
       <p class="muted" style="margin: 0.5rem 0 0;">
         {t('Based on {n} timestamped posts. Posts marked before timestamps were added aren’t dated.', { n: activity.timestamped })}
       </p>
+    </div>
+  </div>
+
+  <!-- Calendar heatmap (last 52 weeks) -->
+  <div class="card">
+    <h3 style="margin: 0 0 0.6rem;">{t('Posting calendar')}</h3>
+    <div class="heatmap-wrap">
+      <div class="heatmap">
+        {#each heatmap as week, wi (wi)}
+          <div class="hm-week">
+            {#each week as day (day.date)}
+              <div
+                class="hm-cell l{heatLevel(day.count)}"
+                class:future={day.inFuture}
+                title={`${day.date} · ${day.count} ${day.count === 1 ? t('post') : t('posts')}`}
+              ></div>
+            {/each}
+          </div>
+        {/each}
+      </div>
+      <div class="hm-legend">
+        <span class="muted">{t('Less')}</span>
+        <span class="hm-cell l0"></span>
+        <span class="hm-cell l1"></span>
+        <span class="hm-cell l2"></span>
+        <span class="hm-cell l3"></span>
+        <span class="hm-cell l4"></span>
+        <span class="muted">{t('More')}</span>
+      </div>
     </div>
   </div>
 
@@ -295,6 +368,30 @@
     min-width: 2px;
   }
   .bar-num { font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+
+  /* Calendar heatmap (GitHub-style). */
+  .heatmap-wrap { overflow-x: auto; padding-bottom: 4px; }
+  .heatmap { display: flex; gap: 3px; padding-bottom: 2px; }
+  .hm-week { display: flex; flex-direction: column; gap: 3px; }
+  .hm-cell {
+    width: 11px;
+    height: 11px;
+    border-radius: 2px;
+    background: var(--vk-surface-alt);
+  }
+  .hm-cell.future { opacity: 0.35; }
+  .hm-cell.l1 { background: color-mix(in srgb, var(--vk-blue) 22%, var(--vk-surface-alt)); }
+  .hm-cell.l2 { background: color-mix(in srgb, var(--vk-blue) 45%, var(--vk-surface-alt)); }
+  .hm-cell.l3 { background: color-mix(in srgb, var(--vk-blue) 70%, var(--vk-surface-alt)); }
+  .hm-cell.l4 { background: var(--vk-blue); }
+  .hm-legend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+  }
+  .hm-legend .hm-cell { width: 11px; height: 11px; }
 
   .agenda-section { margin-bottom: 0.5rem; }
   .agenda-head {
