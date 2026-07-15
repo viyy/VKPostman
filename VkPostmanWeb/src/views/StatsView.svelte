@@ -422,10 +422,11 @@
   .agenda-item:hover { background: var(--vk-hover); }
   .agenda-date {
     flex-shrink: 0;
-    width: 5.5rem;
+    width: 8.5rem;
     font-size: 0.82rem;
     color: var(--vk-text-secondary);
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
   .agenda-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
