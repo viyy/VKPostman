@@ -97,16 +97,24 @@
     return { last7, last30, timestamped };
   });
 
-  const postsPerGroup = $derived.by(() => {
+  // NOTE: These two use $state + $effect (rather than $derived.by) because in
+  // this scope $derived was intermittently not re-running when both `drafts`
+  // and `groups`/`templates` changed on separate liveQuery ticks — the panels
+  // stayed empty even with 27 posts against 31 groups. $effect tracks reads
+  // reliably and writes the derived output back to $state.
+  let postsPerGroup = $state<Array<{ name: string; screen: string; count: number }>>([]);
+  let templateUsage = $state<Array<{ name: string; groups: number; posts: number }>>([]);
+
+  $effect(() => {
     const counts = new Map<number, number>();
     for (const d of drafts)
       for (const id of d.postedGroupIds ?? []) counts.set(id, (counts.get(id) ?? 0) + 1);
-    return groups
+    postsPerGroup = groups
       .map((g) => ({ name: g.displayName, screen: g.screenName, count: counts.get(g.id!) ?? 0 }))
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   });
 
-  const templateUsage = $derived.by(() => {
+  $effect(() => {
     const postsByTpl = new Map<number, number>();
     for (const d of drafts) {
       for (const gid of d.postedGroupIds ?? []) {
@@ -117,8 +125,8 @@
     const groupsByTpl = new Map<number, number>();
     for (const g of groups)
       if (g.postTemplateId != null) groupsByTpl.set(g.postTemplateId, (groupsByTpl.get(g.postTemplateId) ?? 0) + 1);
-    return templates
-      .map((t) => ({ name: t.name, groups: groupsByTpl.get(t.id!) ?? 0, posts: postsByTpl.get(t.id!) ?? 0 }))
+    templateUsage = templates
+      .map((tpl) => ({ name: tpl.name, groups: groupsByTpl.get(tpl.id!) ?? 0, posts: postsByTpl.get(tpl.id!) ?? 0 }))
       .sort((a, b) => b.posts - a.posts || b.groups - a.groups || a.name.localeCompare(b.name));
   });
 
