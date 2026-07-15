@@ -894,15 +894,15 @@
         <div class="card">
           <div class="card-header">
             <h3 style="margin: 0;">{t('Placeholders')}</h3>
-            <div class="row">
-              <span class="muted">{t('union across selected groups\' templates')}</span>
-              <button
-                type="button"
-                class="link-btn"
-                onclick={() => (usedByCollapsed = !usedByCollapsed)}
-              >{usedByCollapsed ? t('show "used by"') : t('hide "used by"')}</button>
-            </div>
+            <button
+              type="button"
+              class="link-btn"
+              onclick={() => (usedByCollapsed = !usedByCollapsed)}
+            >{usedByCollapsed ? t('show "used by"') : t('hide "used by"')}</button>
           </div>
+          <p class="muted" style="margin: -0.3rem 0 0.6rem;">
+            {t('union across selected groups\' templates')}
+          </p>
           <div class="stack-lg">
             {#each placeholders as u (u.key)}
               {@const def = u.definition}
