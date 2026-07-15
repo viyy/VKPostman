@@ -996,8 +996,8 @@
             ondrop={() => reorderTo(r.group.id!)}
             role="listitem"
           >
-            <div class="card-header">
-              <strong>
+            <div class="post-hdr">
+              <strong class="post-title">
                 <span
                   class="drag-handle"
                   draggable="true"
@@ -1010,7 +1010,7 @@
                 ><GripVertical size={15} /></span>
                 {r.group.displayName}
               </strong>
-              <div class="row">
+              <div class="row post-actions">
                 <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}><Copy size={15} /> {t('Copy')}</button>
                 <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}><ExternalLink size={15} /> {t('Open vk.com')}</button>
                 <button class="btn btn-primary btn-sm" onclick={() => markPosted(r.group.id!)}><Check size={15} /> {t('Posted')}</button>
@@ -1046,14 +1046,14 @@
       {#if !postedCollapsed}
         {#each postedRenders as r (r.group.id)}
           <div class="card posted-card">
-            <div class="card-header">
-              <strong>
+            <div class="post-hdr">
+              <strong class="post-title">
                 {r.group.displayName}
                 {#if postedDateLabel(r.group.id!)}
                   <span class="muted" style="font-weight: 400;">· {t('posted {date}', { date: postedDateLabel(r.group.id!) })}</span>
                 {/if}
               </strong>
-              <div class="row">
+              <div class="row post-actions">
                 <button class="btn btn-outline btn-sm" onclick={() => copyText(r.text)}><Copy size={15} /> {t('Copy')}</button>
                 <button class="btn btn-outline btn-sm" onclick={() => openGroup(r.group)}><ExternalLink size={15} /> {t('Open vk.com')}</button>
                 <button class="btn btn-ghost btn-sm" onclick={() => unmarkPosted(r.group.id!)}><Undo2 size={15} /> {t('Unmark')}</button>
@@ -1201,6 +1201,21 @@
     border-radius: 4px;
   }
   .img-dup:hover { background: var(--vk-hover); }
+
+  /* Per-post card header: title on its own row, action buttons below. */
+  .post-hdr {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.4rem;
+    margin-bottom: 0.6rem;
+  }
+  .post-title {
+    overflow-wrap: anywhere;
+  }
+  .post-actions {
+    justify-content: flex-end;
+  }
 
   /* Per-post character counter. */
   .char-count {
