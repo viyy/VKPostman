@@ -33,6 +33,8 @@
   let detailsCollapsed = $state(localStorage.getItem('vkp.draftDetailsCollapsed') === '1');
   let toPostCollapsed  = $state(localStorage.getItem('vkp.draftToPostCollapsed') === '1');
   let postedCollapsed  = $state(localStorage.getItem('vkp.draftPostedCollapsed') === '1');
+  // "used by:" lines under placeholders — default collapsed (visual noise).
+  let usedByCollapsed  = $state(localStorage.getItem('vkp.draftUsedByCollapsed') !== '0');
   $effect(() => {
     localStorage.setItem('vkp.draftGroupsCollapsed', groupsCollapsed ? '1' : '0');
   });
@@ -44,6 +46,9 @@
   });
   $effect(() => {
     localStorage.setItem('vkp.draftPostedCollapsed', postedCollapsed ? '1' : '0');
+  });
+  $effect(() => {
+    localStorage.setItem('vkp.draftUsedByCollapsed', usedByCollapsed ? '1' : '0');
   });
 
   let saveStatus = $state<AutosaveStatus>('idle');
@@ -889,7 +894,14 @@
         <div class="card">
           <div class="card-header">
             <h3 style="margin: 0;">{t('Placeholders')}</h3>
-            <span class="muted">{t('union across selected groups\' templates')}</span>
+            <div class="row">
+              <span class="muted">{t('union across selected groups\' templates')}</span>
+              <button
+                type="button"
+                class="link-btn"
+                onclick={() => (usedByCollapsed = !usedByCollapsed)}
+              >{usedByCollapsed ? t('show "used by"') : t('hide "used by"')}</button>
+            </div>
           </div>
           <div class="stack-lg">
             {#each placeholders as u (u.key)}
@@ -929,7 +941,9 @@
                   />
                 {/if}
 
-                <span class="muted">{t('used by: {names}', { names: u.usedByGroups.join(', ') })}</span>
+                {#if !usedByCollapsed}
+                  <span class="muted">{t('used by: {names}', { names: u.usedByGroups.join(', ') })}</span>
+                {/if}
               </div>
             {/each}
           </div>

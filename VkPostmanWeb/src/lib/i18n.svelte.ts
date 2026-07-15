@@ -97,6 +97,8 @@ const ru: Record<string, string> = {
   // ---- Placeholders (draft) ----
   'union across selected groups\' templates': 'объединение по шаблонам выбранных групп',
   'used by: {names}': 'используется: {names}',
+  'show "used by"': 'показать «используется»',
+  'hide "used by"': 'скрыть «используется»',
 
   // ---- To post ----
   'To post': 'К публикации',
